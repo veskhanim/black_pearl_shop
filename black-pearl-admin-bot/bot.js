@@ -7,6 +7,35 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {polling: true});
 
 const API = process.env.APPS_SCRIPT_URL;
 
+// ===== ХРАНИЛИЩЕ ПОСТОВ (для обхода лимита callback_data) =====
+const postsStorage = new Map(); // id -> {text, type, adminId, timestamp}
+let postCounter = 0;
+
+function savePost(text, type, adminId) {
+  postCounter++;
+  const id = 'p' + postCounter + '_' + Date.now().toString(36);
+  postsStorage.set(id, {
+    text,
+    type,
+    adminId,
+    timestamp: Date.now()
+  });
+  
+  // Удаляем старые посты (старше 1 часа)
+  const hourAgo = Date.now() - 3600000;
+  for (const [key, value] of postsStorage.entries()) {
+    if (value.timestamp < hourAgo) {
+      postsStorage.delete(key);
+    }
+  }
+  
+  return id;
+}
+
+function getPost(id) {
+  return postsStorage.get(id);
+}
+
 const ROLES = {
   manager: ['create', 'status', 'payment', 'box', 'pickup', 'orders', 'stats', 'users', 'parse', 'theme'],
   warehouse: ['box', 'pickup', 'orders', 'status', 'parse'],
@@ -145,42 +174,49 @@ bot.on('message', async (msg) => {
 
 // ===== ПРЕВЬЮ =====
 async function showPreview(chatId, admin, type, text) {
+  // Сохраняем пост в хранилище и получаем короткий ID
+  const postId = savePost(text, type, admin.telegram_id);
+  
   if (type === 'signup_positions') {
     const parsed = parser.parsePositionsPost(text);
     let preview = `🔍 <b>Пост с позициями</b>\n\n`;
     preview += `📦 <b>${parsed.postTitle}</b>\n`;
     if (parsed.hashtag) preview += `🏷️ ${parsed.hashtag}\n`;
     preview += `\n💎 <b>Справочник цен:</b>\n`;
-    Object.values(parsed.priceList).forEach(p => { preview += `  • ${p.name}: ${p.price.toLocaleString('ru')} ₽\n`; });
+    Object.values(parsed.priceList).forEach(p => { 
+      preview += `  • ${p.name}: ${p.price.toLocaleString('ru')} ₽\n`; 
+    });
     preview += `\n📋 <b>Позиций: ${parsed.positions.length}</b>\n`;
     
     let totalEntries = 0;
     parsed.positions.forEach(pos => { totalEntries += 1 + pos.queue.length; });
     preview += `👥 <b>Всего записей: ${totalEntries}</b>\n\n`;
     
-    parsed.positions.forEach(pos => {
+    // Показываем только первые 3 позиции (чтобы не превысить лимит Telegram)
+    const positionsToShow = parsed.positions.slice(0, 3);
+    positionsToShow.forEach(pos => {
       preview += `<b>Позиция ${pos.number}: ${pos.name}</b>\n`;
       preview += `  👑 Главный: @${pos.mainBuyer.username}`;
       if (pos.mainBuyer.deadline) preview += ` ⏰ ${pos.mainBuyer.deadline}`;
       preview += '\n';
       if (pos.queue.length > 0) {
-        preview += `  🔢 Очередь (${pos.queue.length}):\n`;
-        pos.queue.forEach(q => {
-          preview += `    • ${q.member}: @${q.username}`;
-          if (q.deadline) preview += ` ⏰ ${q.deadline}`;
-          preview += '\n';
-        });
+        preview += `  🔢 Очередь (${pos.queue.length} чел.)\n`;
       }
       preview += '\n';
     });
     
+    if (parsed.positions.length > 3) {
+      preview += `... и ещё ${parsed.positions.length - 3} позиций\n\n`;
+    }
+    
     preview += `✅ Создать заказы?`;
     
+    // ВАЖНО: callback_data теперь короткий!
     bot.sendMessage(chatId, preview, {
       parse_mode: 'HTML',
       reply_markup: {inline_keyboard: [[
-        {text: '✅ Создать все', callback_data: `confirm:signup_positions:${Buffer.from(text).toString('base64')}`},
-        {text: '❌ Отмена', callback_data: 'cancel'}
+        {text: '✅ Создать все', callback_data: `ok:${postId}`},
+        {text: '❌ Отмена', callback_data: `no:${postId}`}
       ]]}
     });
     return;
@@ -201,12 +237,15 @@ async function showPreview(chatId, admin, type, text) {
     
     Object.keys(byQueue).sort((a, b) => a - b).forEach(q => {
       preview += `<b>Очередь ${q}:</b>\n`;
-      byQueue[q].forEach(e => {
+      byQueue[q].slice(0, 5).forEach(e => {
         preview += `  • ${e.name}`;
         if (e.username) preview += ` (@${e.username})`;
         if (e.deadline) preview += ` ⏰ ${e.deadline}`;
         preview += '\n';
       });
+      if (byQueue[q].length > 5) {
+        preview += `  ... и ещё ${byQueue[q].length - 5}\n`;
+      }
       preview += '\n';
     });
     
@@ -215,8 +254,8 @@ async function showPreview(chatId, admin, type, text) {
     bot.sendMessage(chatId, preview, {
       parse_mode: 'HTML',
       reply_markup: {inline_keyboard: [[
-        {text: '✅ Создать', callback_data: `confirm:signup:${Buffer.from(text).toString('base64')}`},
-        {text: '❌ Отмена', callback_data: 'cancel'}
+        {text: '✅ Создать', callback_data: `ok:${postId}`},
+        {text: '❌ Отмена', callback_data: `no:${postId}`}
       ]]}
     });
     return;
@@ -227,18 +266,21 @@ async function showPreview(chatId, admin, type, text) {
     let preview = `💳 <b>Пост оплаты</b>\n\n`;
     preview += `Записей: <b>${parsed.entries.length}</b>\n`;
     preview += `💎 Сумма: <b>${parsed.entries.reduce((s, e) => s + e.amount, 0).toLocaleString('ru')} ₽</b>\n\n`;
-    parsed.entries.forEach(e => {
+    parsed.entries.slice(0, 10).forEach(e => {
       preview += `• @${e.username} — ${e.amount.toLocaleString('ru')} ₽`;
       if (e.deadline) preview += ` ⏰ ${e.deadline}`;
       preview += '\n';
     });
+    if (parsed.entries.length > 10) {
+      preview += `... и ещё ${parsed.entries.length - 10}\n`;
+    }
     preview += `\n✅ Создать записи об оплате?`;
     
     bot.sendMessage(chatId, preview, {
       parse_mode: 'HTML',
       reply_markup: {inline_keyboard: [[
-        {text: '✅ Создать', callback_data: `confirm:payment:${Buffer.from(text).toString('base64')}`},
-        {text: '❌ Отмена', callback_data: 'cancel'}
+        {text: '✅ Создать', callback_data: `ok:${postId}`},
+        {text: '❌ Отмена', callback_data: `no:${postId}`}
       ]]}
     });
   }
@@ -247,27 +289,46 @@ async function showPreview(chatId, admin, type, text) {
 // ===== CALLBACK (подтверждение) =====
 bot.on('callback_query', async (query) => {
   const admin = await getAdmin(query.from.id);
-  if (!admin) return bot.answerCallbackQuery(query.id, {text: '⛔ Нет прав'});
+  if (!admin) {
+    await bot.answerCallbackQuery(query.id, {text: '⛔ Нет прав'});
+    return;
+  }
   
-  if (query.data === 'cancel') {
+  const [action, postId] = query.data.split(':');
+  
+  // Отмена
+  if (action === 'no') {
+    postsStorage.delete(postId);
     await bot.answerCallbackQuery(query.id, {text: '❌ Отменено'});
-    return bot.editMessageText('❌ Отменено', {chat_id: query.message.chat.id, message_id: query.message.message_id});
+    return bot.editMessageText('❌ Отменено', {
+      chat_id: query.message.chat.id,
+      message_id: query.message.message_id
+    });
   }
   
-  if (query.data.startsWith('preview:')) {
-    const [, type, textBase64] = query.data.split(':');
-    const text = Buffer.from(textBase64, 'base64').toString('utf8');
-    await showPreview(query.message.chat.id, admin, type, text);
-    return bot.answerCallbackQuery(query.id);
-  }
-  
-  if (query.data.startsWith('confirm:')) {
-    const [, type, textBase64] = query.data.split(':');
-    const text = Buffer.from(textBase64, 'base64').toString('utf8');
+  // Подтверждение
+  if (action === 'ok') {
+    const postData = getPost(postId);
+    if (!postData) {
+      await bot.answerCallbackQuery(query.id, {text: '⏰ Пост устарел, отправь заново'});
+      return bot.editMessageText('⏰ Время истекло. Отправь текст поста заново.', {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id
+      });
+    }
+    
+    // Проверяем, что нажимает тот же админ
+    if (String(postData.adminId) !== String(admin.telegram_id)) {
+      await bot.answerCallbackQuery(query.id, {text: '⛔ Это не твой пост'});
+      return;
+    }
+    
     await bot.answerCallbackQuery(query.id, {text: '⏳ Создаю...'});
     
     try {
       let result;
+      const text = postData.text;
+      const type = postData.type;
       
       if (type === 'signup_positions') {
         result = await parser.processPositionsPost(text, admin.name);
@@ -276,6 +337,9 @@ bot.on('callback_query', async (query) => {
       } else if (type === 'payment') {
         result = await parser.processPaymentPost(text, admin.name);
       }
+      
+      // Удаляем пост из хранилища после обработки
+      postsStorage.delete(postId);
       
       if (result.success) {
         let msg = `✅ <b>Создано: ${result.created}</b>\n`;
@@ -319,15 +383,30 @@ bot.on('callback_query', async (query) => {
         
         if (result.errors?.length) {
           msg += `\n⚠️ <b>Ошибки:</b>\n`;
-          result.errors.slice(0, 10).forEach(e => { msg += `  • ${e.name || e.username}: ${e.error}\n`; });
+          result.errors.slice(0, 10).forEach(e => { 
+            msg += `  • ${e.name || e.username}: ${e.error}\n`; 
+          });
+          if (result.errors.length > 10) {
+            msg += `  ... и ещё ${result.errors.length - 10}\n`;
+          }
         }
         
-        await bot.editMessageText(msg, {chat_id: query.message.chat.id, message_id: query.message.message_id, parse_mode: 'HTML'});
+        await bot.editMessageText(msg, {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+          parse_mode: 'HTML'
+        });
       } else {
-        await bot.editMessageText('❌ ' + result.error, {chat_id: query.message.chat.id, message_id: query.message.message_id});
+        await bot.editMessageText('❌ ' + result.error, {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id
+        });
       }
     } catch(err) {
-      await bot.editMessageText('❌ Ошибка: ' + err.message, {chat_id: query.message.chat.id, message_id: query.message.message_id});
+      await bot.editMessageText('❌ Ошибка: ' + err.message, {
+        chat_id: query.message.chat.id,
+        message_id: query.message.message_id
+      });
     }
   }
 });
