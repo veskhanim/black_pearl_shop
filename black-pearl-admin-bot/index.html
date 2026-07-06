@@ -1,6 +1,26 @@
 // ВСТАВЬ СВОЙ URL ОТ APPS SCRIPT
 const API_URL = 'https://script.google.com/macros/s/AKfycbw_sa6r1Llatf7dgRXaCeRdip6tETMsI3QrEJzcnQTU88UVN--SYL38ykiZ8aMQfMfn/exec';
 
+const THEMES = {
+  pirate: {primary: '#40d4a8', primaryDark: '#14b8a6', primaryLight: '#5eead4', primaryGlow: 'rgba(64,212,168,0.5)', border: 'rgba(64,212,168,0.2)', borderStrong: 'rgba(64,212,168,0.4)', bg: '#0a0f1c', bgCard: 'rgba(15,23,42,0.7)', bgCardSolid: '#0f172a'},
+  
+  // ===== НОВАЯ ТЕМА =====
+  emerald: {
+    primary: '#10b981',
+    primaryDark: '#059669',
+    primaryLight: '#34d399',
+    primaryGlow: 'rgba(16,185,129,0.5)',
+    border: 'rgba(16,185,129,0.2)',
+    borderStrong: 'rgba(16,185,129,0.4)',
+    bg: '#0a1f15',
+    bgCard: 'rgba(10,31,21,0.7)',
+    bgCardSolid: '#0f2d1f'
+  },
+  // =====================
+  
+ 
+};
+
 // Замени функцию loadUserData на реальную
 async function loadUserData() {
   try {
