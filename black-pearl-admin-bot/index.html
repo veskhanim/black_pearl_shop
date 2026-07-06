@@ -1,0 +1,74 @@
+// ВСТАВЬ СВОЙ URL ОТ APPS SCRIPT
+const API_URL = 'https://script.google.com/macros/s/AKfycbw_sa6r1Llatf7dgRXaCeRdip6tETMsI3QrEJzcnQTU88UVN--SYL38ykiZ8aMQfMfn/exec';
+
+// Замени функцию loadUserData на реальную
+async function loadUserData() {
+  try {
+    const [ordersRes, boxesRes, paymentsRes, statsRes] = await Promise.all([
+      fetch(`${API_URL}?action=getOrders&userId=${userData.id}`),
+      fetch(`${API_URL}?action=getBoxes&userId=${userData.id}`),
+      fetch(`${API_URL}?action=getPayments&userId=${userData.id}`),
+      fetch(`${API_URL}?action=getStats&userId=${userData.id}`)
+    ]);
+    
+    const [ordersData, boxesData, paymentsData, statsData] = await Promise.all([
+      ordersRes.json(), boxesRes.json(), paymentsRes.json(), statsRes.json()
+    ]);
+    
+    // Подменяем демо-данные реальными
+    orders.length = 0;
+    ordersData.forEach(o => orders.push({
+      id: o.order_id,
+      items: o.items,
+      total: o.total,
+      status: o.status,
+      created: o.created_at,
+      timeline: buildTimeline(o.status, o.created_at)
+    }));
+    
+    boxes.length = 0;
+    boxesData.filter(b => b.status === 'ready').forEach(b => boxes.push({
+      id: b.box_id,
+      orderId: b.order_id,
+      address: b.pickup_location,
+      items: [], // можно подтянуть из заказа
+      readyDate: b.ready_date,
+      pickupCode: b.pickup_code
+    }));
+    
+    renderOrders();
+    renderPayments();
+    renderDelivery();
+    renderBoxes();
+    updateStats(statsData);
+    
+  } catch(err) {
+    console.error(err);
+    showToast('Ошибка загрузки');
+  }
+}
+
+// Генератор таймлайна по статусу
+function buildTimeline(status, created) {
+  const stages = [
+    {title: 'Заказ создан', status: 'pending'},
+    {title: 'Оплата получена', status: 'paid'},
+    {title: 'Собран на складе в Корее', status: 'shipped'},
+    {title: 'Отправлен в Россию', status: 'shipped'},
+    {title: 'Прибыл в город', status: 'ready'},
+    {title: 'Готов к выдаче', status: 'ready'}
+  ];
+  
+  const order = ['pending', 'paid', 'shipped', 'ready', 'delivered'];
+  const currentIdx = order.indexOf(status);
+  
+  return stages.map((s, i) => ({
+    title: s.title,
+    date: i <= currentIdx ? created : '—',
+    done: i <= currentIdx
+  }));
+}
+
+// Вызываем при старте
+loadUserData();
+setInterval(loadUserData, 30000); // обновление каждые 30 сек
