@@ -20,14 +20,29 @@ async function getAdmins() {
   if (adminsCache && Date.now() - cacheTime < 60000) return adminsCache;
   try {
     const res = await fetch(`${API}?action=getAdmins`);
-    adminsCache = await res.json();
+    const data = await res.json();
+    
+    // ВАЖНО: проверяем, что это массив
+    if (!Array.isArray(data)) {
+      console.error('❌ Apps Script вернул не массив:', data);
+      return [];
+    }
+    
+    adminsCache = data;
     cacheTime = Date.now();
     return adminsCache;
-  } catch(e) { return []; }
+  } catch(e) {
+    console.error('❌ Ошибка получения админов:', e.message);
+    return [];
+  }
 }
 
 async function getAdmin(userId) {
   const admins = await getAdmins();
+  if (!Array.isArray(admins)) {
+    console.error('❌ admins не является массивом:', admins);
+    return null;
+  }
   return admins.find(a => String(a.telegram_id) === String(userId));
 }
 
