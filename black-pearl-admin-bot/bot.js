@@ -59,71 +59,47 @@ bot.onText(/\/start/, async (msg) => {
     `🎭 Роль: <b>${admin.role}</b>\n\n` +
     `📋 <b>Команды:</b>\n` +
     `/orders — активные заказы\n` +
-    `/order &lt;id&gt; — детали заказа\n` +
+    `/order <id> — детали заказа\n` +
     `/create — создать заказ вручную\n` +
     `/bulk — массовое создание\n` +
-    `/status &lt;id&gt; &lt;статус&gt; — изменить статус\n` +
-    `/payment &lt;id&gt; &lt;сумма&gt; — отметить оплату\n` +
-    `/box &lt;order_id&gt; &lt;код&gt; &lt;адрес&gt; — создать коробку\n` +
-    `/pickup &lt;box_id&gt; — выдать коробку\n` +
+    `/status <id> <статус> — изменить статус\n` +
+    `/payment <id> <сумма> — отметить оплату\n` +
+    `/box <order_id> <код> <адрес> — создать коробку\n` +
+    `/pickup <box_id> — выдать коробку\n` +
     `/stats — статистика\n` +
     `/users — список клиентов\n` +
     `/theme [название] — сменить тему ✨\n\n` +
-    `🔗 <b>Парсинг постов:</b>\n` +
-    `Просто пришли ссылку на пост:\n` +
-    `<code>https://t.me/channel/123</code>`,
+    `📝 <b>Парсинг постов:</b>\n` +
+    `Просто скопируй текст поста и отправь боту!\n` +
+    `Бот сам определит тип и создаст заказы.`,
     {parse_mode: 'HTML'}
   );
 });
 
-// Обработка ссылок на посты
+// ===== ОБРАБОТКА ТЕКСТА ПОСТОВ =====
 bot.on('message', async (msg) => {
   if (!msg.text || msg.text.startsWith('/')) return;
+  
   const admin = await getAdmin(msg.from.id);
   if (!admin) return;
   
-  const linkMatch = msg.text.match(/https?:\/\/t\.me\/([a-zA-Z0-9_]+)\/(\d+)/);
-  if (!linkMatch) return;
-  
-  const channelUsername = linkMatch[1];
-  const messageId = parseInt(linkMatch[2]);
-  
-  let chatId;
-  try {
-    const chat = await bot.getChat('@' + channelUsername);
-    chatId = chat.id;
-  } catch(e) {
-    return bot.sendMessage(msg.chat.id, '❌ Бот не добавлен в канал как админ');
-  }
-  
-  let postText;
-  try {
-    const forwarded = await bot.forwardMessage(msg.chat.id, chatId, messageId);
-    postText = forwarded.text || forwarded.caption || '';
-    setTimeout(() => bot.deleteMessage(msg.chat.id, forwarded.message_id).catch(() => {}), 1000);
-  } catch(e) {
-    return bot.sendMessage(msg.chat.id, '❌ Не могу прочитать пост');
-  }
-  
-  if (!postText) return bot.sendMessage(msg.chat.id, '❌ Пост пустой');
-  
-  const postType = parser.detectPostType(postText);
+  const text = msg.text;
+  const postType = parser.detectPostType(text);
   
   if (postType === 'unknown') {
-    return bot.sendMessage(msg.chat.id, '🔍 Не могу определить тип поста\n\nЧто это?', {
-      reply_markup: {
-        inline_keyboard: [
-          [{text: '📝 Пост записи', callback_data: `preview:signup:${Buffer.from(postText).toString('base64')}`}],
-          [{text: '📦 Пост с позициями', callback_data: `preview:signup_positions:${Buffer.from(postText).toString('base64')}`}],
-          [{text: '💳 Пост оплаты', callback_data: `preview:payment:${Buffer.from(postText).toString('base64')}`}]
-        ]
-      }
-    });
+    return bot.sendMessage(msg.chat.id, 
+      '🤔 Не похоже на пост для парсинга\n\n' +
+      'Отправь:\n' +
+      '• Текст поста с записями\n' +
+      '• Или текст поста с позициями\n' +
+      '• Или текст поста с оплатами'
+    );
   }
   
-  await showPreview(msg.chat.id, admin, postType, postText);
+  await showPreview(msg.chat.id, admin, postType, text);
 });
 
+// ===== ПРЕВЬЮ =====
 async function showPreview(chatId, admin, type, text) {
   if (type === 'signup_positions') {
     const parsed = parser.parsePositionsPost(text);
@@ -135,8 +111,8 @@ async function showPreview(chatId, admin, type, text) {
     preview += `\n📋 <b>Позиций: ${parsed.positions.length}</b>\n`;
     
     let totalEntries = 0;
-    parsed.positions.forEach(p => { totalEntries += 1 + p.queue.length; });
-    preview += ` <b>Всего записей: ${totalEntries}</b>\n\n`;
+    parsed.positions.forEach(pos => { totalEntries += 1 + pos.queue.length; });
+    preview += `👥 <b>Всего записей: ${totalEntries}</b>\n\n`;
     
     parsed.positions.forEach(pos => {
       preview += `<b>Позиция ${pos.number}: ${pos.name}</b>\n`;
@@ -184,7 +160,7 @@ async function showPreview(chatId, admin, type, text) {
       byQueue[q].forEach(e => {
         preview += `  • ${e.name}`;
         if (e.username) preview += ` (@${e.username})`;
-        if (e.deadline) preview += `  ${e.deadline}`;
+        if (e.deadline) preview += ` ⏰ ${e.deadline}`;
         preview += '\n';
       });
       preview += '\n';
@@ -224,12 +200,13 @@ async function showPreview(chatId, admin, type, text) {
   }
 }
 
+// ===== CALLBACK (подтверждение) =====
 bot.on('callback_query', async (query) => {
   const admin = await getAdmin(query.from.id);
   if (!admin) return bot.answerCallbackQuery(query.id, {text: '⛔ Нет прав'});
   
   if (query.data === 'cancel') {
-    await bot.answerCallbackQuery(query.id, {text: ' Отменено'});
+    await bot.answerCallbackQuery(query.id, {text: '❌ Отменено'});
     return bot.editMessageText('❌ Отменено', {chat_id: query.message.chat.id, message_id: query.message.message_id});
   }
   
@@ -258,7 +235,7 @@ bot.on('callback_query', async (query) => {
       
       if (result.success) {
         let msg = `✅ <b>Создано: ${result.created}</b>\n`;
-        if (result.skipped > 0) msg += `️ <b>Пропущено: ${result.skipped}</b>\n`;
+        if (result.skipped > 0) msg += `⏭️ <b>Пропущено: ${result.skipped}</b>\n`;
         msg += '\n';
         
         if (result.orders) {
@@ -314,7 +291,7 @@ bot.on('callback_query', async (query) => {
 // /theme
 bot.onText(/\/theme(?:\s+(.+))?/, async (msg, match) => {
   const admin = await getAdmin(msg.from.id);
-  if (!admin || !canDo(admin.role, 'theme')) return bot.sendMessage(msg.chat.id, ' Только для админов');
+  if (!admin || !canDo(admin.role, 'theme')) return bot.sendMessage(msg.chat.id, '⛔ Только для админов');
   
   const themeName = match[1]?.trim();
   
@@ -328,9 +305,9 @@ bot.onText(/\/theme(?:\s+(.+))?/, async (msg, match) => {
     {id: 'seventeen_godofmusic', name: '👑 SEVENTEEN — God of Music'},
     {id: 'straykids_rockstar', name: '🎸 Stray Kids — Rock-Star'},
     {id: 'lesserafim_easy', name: '💙 LE SSERAFIM — Easy'},
-    {id: 'enhypen_romance', name: ' ENHYPEN — Romance'},
+    {id: 'enhypen_romance', name: '🌙 ENHYPEN — Romance'},
     {id: 'ive_baddie', name: '💖 IVE — Baddie'},
-    {id: 'twice_withyouth', name: ' TWICE — With YOU-th'},
+    {id: 'twice_withyouth', name: '🌸 TWICE — With YOU-th'},
     {id: 'blackpink_pinkvenom', name: '🖤 BLACKPINK — Pink Venom'}
   ];
   
@@ -351,7 +328,7 @@ bot.onText(/\/theme(?:\s+(.+))?/, async (msg, match) => {
   
   try {
     await apiPost({action: 'setTheme', theme: themeName});
-    bot.sendMessage(msg.chat.id, `🎨 <b>Тема изменена!</b>\n\n${validTheme.name}\n\nВсе пользователи увидят новую палитру `, {parse_mode: 'HTML'});
+    bot.sendMessage(msg.chat.id, `🎨 <b>Тема изменена!</b>\n\n${validTheme.name}\n\nВсе пользователи увидят новую палитру ✨`, {parse_mode: 'HTML'});
   } catch(err) {
     bot.sendMessage(msg.chat.id, '❌ Ошибка: ' + err.message);
   }
@@ -367,7 +344,7 @@ bot.onText(/\/orders/, async (msg) => {
     if (!active.length) return bot.sendMessage(msg.chat.id, '✅ Нет активных заказов');
     const text = `🌊 <b>Активные заказы (${active.length})</b>\n\n` + 
       active.slice(0, 15).map(o => 
-        `🦪 <b>${o.order_id}</b>\n├ ${STATUS_EMOJI[o.status]} ${STATUS_LABELS[o.status]}\n├ 💎 ${Number(o.total).toLocaleString('ru')} ₽\n└  ${o.telegram_id}`
+        `🦪 <b>${o.order_id}</b>\n├ ${STATUS_EMOJI[o.status]} ${STATUS_LABELS[o.status]}\n├ 💎 ${Number(o.total).toLocaleString('ru')} ₽\n└ 👤 ${o.telegram_id}`
       ).join('\n\n');
     bot.sendMessage(msg.chat.id, text, {parse_mode: 'HTML'});
   } catch(err) { bot.sendMessage(msg.chat.id, '❌ ' + err.message); }
@@ -384,10 +361,10 @@ bot.onText(/\/order (.+)/, async (msg, match) => {
     if (!order) return bot.sendMessage(msg.chat.id, '❌ Заказ не найден');
     const boxes = await apiGet('getBoxes', {userId: order.telegram_id});
     const box = boxes.find(b => String(b.order_id) === orderId);
-    let text = ` <b>Заказ ${order.order_id}</b>\n\n`;
+    let text = `🦪 <b>Заказ ${order.order_id}</b>\n\n`;
     text += `👤 Клиент: ${order.telegram_id}\n`;
     text += `${STATUS_EMOJI[order.status]} Статус: <b>${STATUS_LABELS[order.status]}</b>\n`;
-    text += ` Сумма: ${Number(order.total).toLocaleString('ru')} ₽\n`;
+    text += `💰 Сумма: ${Number(order.total).toLocaleString('ru')} ₽\n`;
     text += `📅 Создан: ${order.created_at}\n`;
     text += `📝 Создал: ${order.created_by}\n`;
     if (order.deadline) text += `⏰ Дедлайн: ${order.deadline}\n`;
@@ -411,7 +388,7 @@ bot.onText(/\/create/, async (msg) => {
     if (m.from.id !== msg.from.id) return;
     if (m.text === '/cancel') return bot.sendMessage(m.chat.id, '❌ Отменено');
     const parts = m.text.split('|').map(s => s.trim());
-    if (parts.length !== 3) return bot.sendMessage(m.chat.id, ' Неверный формат');
+    if (parts.length !== 3) return bot.sendMessage(m.chat.id, '❌ Неверный формат');
     const [telegram_id, itemsStr, total] = parts;
     try {
       const result = await apiPost({action: 'createOrder', telegram_id, items: itemsStr.split(';').map(s => s.trim()), total: Number(total), admin: admin.name});
@@ -423,7 +400,7 @@ bot.onText(/\/create/, async (msg) => {
 // /bulk
 bot.onText(/\/bulk/, async (msg) => {
   const admin = await getAdmin(msg.from.id);
-  if (!admin || !canDo(admin.role, 'create')) return bot.sendMessage(msg.chat.id, ' Нет прав');
+  if (!admin || !canDo(admin.role, 'create')) return bot.sendMessage(msg.chat.id, '⛔ Нет прав');
   bot.sendMessage(msg.chat.id, '📦 <b>Массовое создание</b>\n\nФормат:\n<code>Товар1; Товар2 | сумма\nid1, id2, id3</code>\n\nПример:\n<code>NewJeans Ditto PB | 5200\n123456789, 987654321</code>', {parse_mode: 'HTML'});
   bot.once('message', async (m) => {
     if (m.from.id !== msg.from.id) return;
@@ -459,7 +436,7 @@ bot.onText(/\/status (.+)/, async (msg, match) => {
 // /payment ID AMOUNT
 bot.onText(/\/payment (.+)/, async (msg, match) => {
   const admin = await getAdmin(msg.from.id);
-  if (!admin || !canDo(admin.role, 'payment')) return bot.sendMessage(msg.chat.id, ' Нет прав');
+  if (!admin || !canDo(admin.role, 'payment')) return bot.sendMessage(msg.chat.id, '⛔ Нет прав');
   const [orderId, amount] = match[1].trim().split(/\s+/);
   try {
     const result = await apiPost({action: 'createPayment', orderId, amount: Number(amount), admin: admin.name});
@@ -476,7 +453,7 @@ bot.onText(/\/box (.+)/, async (msg, match) => {
   const [orderId, pickupCode, pickupLocation] = parts;
   try {
     const result = await apiPost({action: 'createBox', orderId, pickupCode, pickupLocation});
-    bot.sendMessage(msg.chat.id, ` ${result.boxId}\n🦪 ${orderId}\n🔑 <code>${pickupCode}</code>\n📍 ${pickupLocation}`, {parse_mode: 'HTML'});
+    bot.sendMessage(msg.chat.id, `📦 ${result.boxId}\n🦪 ${orderId}\n🔑 <code>${pickupCode}</code>\n📍 ${pickupLocation}`, {parse_mode: 'HTML'});
   } catch(err) { bot.sendMessage(msg.chat.id, '❌ ' + err.message); }
 });
 
@@ -500,7 +477,7 @@ bot.onText(/\/stats/, async (msg) => {
       `📊 <b>BLACK PEARL — Статистика</b>\n\n` +
       `🦪 Всего заказов: <b>${stats.totalOrders}</b>\n` +
       `💎 Выручка: <b>${stats.totalRevenue.toLocaleString('ru')} ₽</b>\n\n` +
-      ` Сегодня:\n  ├ Заказов: ${stats.todayOrders}\n  └ Выручка: ${stats.todayRevenue.toLocaleString('ru')} ₽\n\n` +
+      `🆕 Сегодня:\n  ├ Заказов: ${stats.todayOrders}\n  └ Выручка: ${stats.todayRevenue.toLocaleString('ru')} ₽\n\n` +
       `📋 Статусы:\n  ⏳ Ожидают: ${stats.pending}\n  💎 Оплачены: ${stats.paid}\n  🌊 В пути: ${stats.shipped}\n  📦 Готовы: ${stats.ready}\n  ✅ Получены: ${stats.delivered}\n\n` +
       `📦 Коробок ждут: ${stats.boxesReady}`,
       {parse_mode: 'HTML'}
@@ -522,7 +499,7 @@ bot.onText(/\/users/, async (msg) => {
     });
     const list = Object.entries(clients).sort((a, b) => b[1].total - a[1].total).slice(0, 15);
     const text = `👥 <b>Топ клиентов</b>\n\n` + 
-      list.map(([id, data], i) => `${i + 1}. <code>${id}</code>\n   └  ${data.count} • 💎 ${data.total.toLocaleString('ru')} ₽`).join('\n\n');
+      list.map(([id, data], i) => `${i + 1}. <code>${id}</code>\n   └ 🦪 ${data.count} • 💎 ${data.total.toLocaleString('ru')} ₽`).join('\n\n');
     bot.sendMessage(msg.chat.id, text, {parse_mode: 'HTML'});
   } catch(err) { bot.sendMessage(msg.chat.id, '❌ ' + err.message); }
 });
