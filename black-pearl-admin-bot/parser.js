@@ -169,28 +169,121 @@ function findPriceForPosition(positionName, priceList) {
 }
 
 async function processPositionsPost(text, adminName) {
-  const parsed = parsePositionsPost(text);
-  if (!parsed.positions.length) return {success: false, error: 'Не найдено ни одной позиции'};
+  console.log(' processPositionsPost вызван', { 
+    textLength: text?.length,
+    adminName 
+  });
   
+  const parsed = parsePositionsPost(text);
+  
+  if (!parsed.positions.length) {
+    console.error('❌ Не найдено ни одной позиции');
+    return {success: false, error: 'Не найдено ни одной позиции'};
+  }
+  
+  // Собираем все записи для создания заказов
   const allEntries = [];
+  
   parsed.positions.forEach(pos => {
+    // Определяем цену для позиции
     const price = findPriceForPosition(pos.name, parsed.priceList);
-    allEntries.push({username: pos.mainBuyer.username, name: pos.mainBuyer.username, positionNumber: pos.number, positionName: pos.name, role: 'main', deadline: pos.mainBuyer.deadline, price});
+    
+    // Главный покупатель
+    allEntries.push({
+      username: pos.mainBuyer.username,  // ← ВАЖНО: сохраняем username
+      name: pos.mainBuyer.username,
+      positionNumber: pos.number,
+      positionName: pos.name,
+      role: 'main',
+      deadline: pos.mainBuyer.deadline,
+      price: price,
+      telegramId: null  // будет заполнен ниже
+    });
+    
+    // Участники очереди
     pos.queue.forEach(q => {
-      allEntries.push({username: q.username, name: q.member, positionNumber: pos.number, positionName: pos.name, role: 'queue', deadline: q.deadline, price});
+      allEntries.push({
+        username: q.username,  // ← ВАЖНО: сохраняем username
+        name: q.member,
+        positionNumber: pos.number,
+        positionName: pos.name,
+        role: 'queue',
+        deadline: q.deadline,
+        price: price,
+        telegramId: null  // будет заполнен ниже
+      });
     });
   });
   
+  console.log(' Собрано записей', { count: allEntries.length });
+  
+  // Ищем telegram_id для каждого username (не затирая username!)
   for (const entry of allEntries) {
-    if (entry.username) entry.telegramId = await findUserByUsername(entry.username);
+    if (entry.username) {
+      try {
+        const telegramId = await findUserByUsername(entry.username);
+        entry.telegramId = telegramId;
+        console.log(' Найден пользователь', { 
+          username: entry.username, 
+          telegramId,
+          found: !!telegramId 
+        });
+      } catch(e) {
+        console.error(' Ошибка поиска пользователя', { 
+          username: entry.username, 
+          error: e.message 
+        });
+        entry.telegramId = null;
+      }
+    }
   }
   
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({action: 'createOrdersFromPositions', postTitle: parsed.postTitle, hashtag: parsed.hashtag, priceList: parsed.priceList, admin: adminName, entries: allEntries})
+  // Считаем статистику
+  const withTelegramId = allEntries.filter(e => e.telegramId).length;
+  const withoutTelegramId = allEntries.filter(e => !e.telegramId).length;
+  
+  console.log('📈 Статистика', { 
+    total: allEntries.length,
+    withTelegramId,
+    withoutTelegramId 
   });
-  return res.json();
+  
+  // Отправляем в API
+  const payload = {
+    action: 'createOrdersFromPositions',
+    postTitle: parsed.postTitle,
+    hashtag: parsed.hashtag,
+    priceList: parsed.priceList,
+    admin: adminName,
+    entries: allEntries  // ← здесь передаются все данные включая username
+  };
+  
+  console.log('📤 Отправка в API', { 
+    entriesCount: allEntries.length,
+    firstEntry: allEntries[0] 
+  });
+  
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    
+    const result = await res.json();
+    
+    console.log('📥 Ответ от API', { 
+      success: result.success,
+      created: result.created,
+      skipped: result.skipped,
+      errors: result.errors?.length 
+    });
+    
+    return result;
+  } catch(e) {
+    console.error('❌ Ошибка запроса к API', { error: e.message });
+    return {success: false, error: 'Ошибка запроса: ' + e.message};
+  }
 }
 
 async function processSignupPost(text, adminName) {
@@ -200,13 +293,22 @@ async function processSignupPost(text, adminName) {
   if (!parsed.entries.length) return {success: false, error: 'Нет записей'};
   
   for (const entry of parsed.entries) {
-    if (entry.username) entry.telegramId = await findUserByUsername(entry.username);
+    if (entry.username) {
+      entry.telegramId = await findUserByUsername(entry.username);
+      // username уже есть в entry.username, не теряем его
+    }
   }
   
   const res = await fetch(API, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({action: 'createOrdersFromPost', postTitle: parsed.postTitle, price: parsed.price, admin: adminName, entries: parsed.entries})
+    body: JSON.stringify({
+      action: 'createOrdersFromPost',
+      postTitle: parsed.postTitle,
+      price: parsed.price,
+      admin: adminName,
+      entries: parsed.entries  // здесь передаётся username
+    })
   });
   return res.json();
 }
