@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 const parser = require('./parser');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, {polling: true});
+
 const API = process.env.APPS_SCRIPT_URL;
 
 const ROLES = {
@@ -76,26 +77,54 @@ bot.onText(/\/start/, async (msg) => {
   );
 });
 
-// ===== ОБРАБОТКА ТЕКСТА ПОСТОВ =====
+// ===== ОБРАБОТКА ТЕКСТА ПОСТОВ (с отладкой) =====
 bot.on('message', async (msg) => {
-  if (!msg.text || msg.text.startsWith('/')) return;
+  console.log('📨 Получено сообщение:', {
+    id: msg.message_id,
+    from: msg.from?.username || msg.from?.id,
+    text: msg.text?.substring(0, 100) + '...',
+    hasText: !!msg.text,
+    startsWithSlash: msg.text?.startsWith('/')
+  });
   
+  // Игнорируем команды
+  if (!msg.text || msg.text.startsWith('/')) {
+    console.log('⏭️ Пропускаем (команда или нет текста)');
+    return;
+  }
+  
+  // Проверяем админа
   const admin = await getAdmin(msg.from.id);
-  if (!admin) return;
+  if (!admin) {
+    console.log('⛔ Пользователь не админ:', msg.from.id);
+    return bot.sendMessage(msg.chat.id, ' У тебя нет доступа к этому боту');
+  }
+  
+  console.log('✅ Админ подтверждён:', admin.name);
   
   const text = msg.text;
   const postType = parser.detectPostType(text);
   
+  console.log('🔍 Тип поста:', postType);
+  
   if (postType === 'unknown') {
+    console.log('❌ Не удалось определить тип поста');
     return bot.sendMessage(msg.chat.id, 
       '🤔 Не похоже на пост для парсинга\n\n' +
-      'Отправь:\n' +
-      '• Текст поста с записями\n' +
-      '• Или текст поста с позициями\n' +
-      '• Или текст поста с оплатами'
+      'Отправь текст поста с записями, позициями или оплатами.\n\n' +
+      'Пример:\n' +
+      '```\n' +
+      'Разбор на карты higher!\n' +
+      'Каждая по 600₽\n\n' +
+      'Хонджун @user1\n' +
+      'Сонхва @user2\n' +
+      '```\n\n' +
+      'Используй /start для списка команд',
+      {parse_mode: 'Markdown'}
     );
   }
   
+  console.log('🚀 Запускаем парсинг:', postType);
   await showPreview(msg.chat.id, admin, postType, text);
 });
 
