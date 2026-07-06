@@ -354,24 +354,79 @@ async def cmd_stats(message: Message):
         f"✅ Получены: {stats.get('delivered', 0)}"
     )
     await message.answer(text, parse_mode="HTML")
-
+    
 # ===== /theme =====
 @router.message(Command("theme"))
 async def cmd_theme(message: Message):
     admin = await get_admin(message.from_user.id)
     if not admin:
-        return await message.answer("⛔ Только для админов")
+        return await message.answer(" Только для админов")
     
     parts = message.text.split(maxsplit=1)
     theme_name = parts[1].strip() if len(parts) > 1 else None
     
-    if not theme_name:
-        current = await api_get('getTheme')
-        return await message.answer(f"🎨 Текущая тема: <b>{current.get('theme', 'pirate')}</b>\n\nИспользуй: /theme pirate", parse_mode="HTML")
+    # Полный список тем
+    themes = [
+        ('pirate', '⚓ Pirate Default (бирюзовый)'),
+        ('emerald', '💚 Emerald (изумрудный)'),
+        ('newjeans_ditto', '💗 NewJeans — Ditto (розовый)'),
+        ('newjeans_supershy', '💕 NewJeans — Super Shy (ярко-розовый)'),
+        ('bts_butter', '🧈 BTS — Butter (кремовый)'),
+        ('aespa_supernova', '✨ aespa — Supernova (фиолетовый)'),
+        ('aespa_drama', '🔥 aespa — Drama (красный)'),
+        ('seventeen_godofmusic', '👑 SEVENTEEN — God of Music (золотой)'),
+        ('straykids_rockstar', '🎸 Stray Kids — Rock-Star (рок-красный)'),
+        ('lesserafim_easy', '💙 LE SSERAFIM — Easy (голубой)'),
+        ('enhypen_romance', '🌙 ENHYPEN — Romance (серебро)'),
+        ('ive_baddie', '💖 IVE — Baddie (черно-розовый)'),
+        ('twice_withyouth', '🌸 TWICE — With YOU-th (пастель)'),
+        ('blackpink_pinkvenom', '🖤 BLACKPINK — Pink Venom (неон-розовый)'),
+        ('ocean', '🌊 Ocean (океанский синий)'),
+        ('sunset', '🌅 Sunset (закатный)'),
+        ('midnight', ' Midnight (полуночный)'),
+        ('forest', '🌲 Forest (лесной)'),
+        ('ruby', '❤️ Ruby (рубиновый)'),
+        ('amethyst', '💜 Amethyst (аметистовый)')
+    ]
     
-    await api_post({'action': 'setTheme', 'theme': theme_name})
-    await message.answer(f"🎨 Тема изменена на <b>{theme_name}</b>!", parse_mode="HTML")
-
+    if not theme_name:
+        # Показываем текущую тему и список
+        try:
+            current = await api_get('getTheme')
+            current_theme = current.get('theme', 'pirate')
+        except:
+            current_theme = 'pirate'
+        
+        text = f"🎨 <b>Текущая тема:</b> {current_theme}\n\n"
+        text += "<b>Доступные темы:</b>\n\n"
+        for tid, tname in themes:
+            marker = " ✅" if tid == current_theme else ""
+            text += f"<code>/theme {tid}</code> — {tname}{marker}\n"
+        
+        text += "\n💡 Пример: <code>/theme emerald</code>"
+        
+        return await message.answer(text, parse_mode="HTML")
+    
+    # Проверяем, есть ли такая тема
+    valid_theme = next((t for t in themes if t[0] == theme_name), None)
+    if not valid_theme:
+        return await message.answer(
+            f"❌ Тема <b>{theme_name}</b> не найдена\n\n"
+            f"Используй <code>/theme</code> без аргументов для списка",
+            parse_mode="HTML"
+        )
+    
+    # Применяем тему
+    try:
+        await api_post({'action': 'setTheme', 'theme': theme_name})
+        await message.answer(
+            f"🎨 <b>Тема изменена!</b>\n\n"
+            f"{valid_theme[1]}\n\n"
+            f"Все пользователи увидят новую палитру при следующем открытии приложения ✨",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
 # ===== ЗАПУСК =====
 async def main():
     global session
