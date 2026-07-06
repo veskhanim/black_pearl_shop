@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>⚓ BLACK PEARL</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#0a0f1c;--bg-card:rgba(15,23,42,0.7);--bg-card-solid:#0f172a;
+    --deep-sea:#020617;--ocean:#0f172a;
+    --primary:#40d4a8;--primary-dark:#14b8a6;--primary-light:#5eead4;
+    --primary-glow:rgba(64,212,168,0.5);
+    --border:rgba(64,212,168,0.2);--border-strong:rgba(64,212,168,0.4);
+    --text:#e2e8f0;--text-dim:#64748b;--pearl:#f8fafc;
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:100px}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 10%,rgba(64,212,168,0.08),transparent 50%),radial-gradient(ellipse at 80% 90%,rgba(94,234,212,0.1),transparent 50%),linear-gradient(180deg,rgba(2,6,23,0.9),rgba(15,23,42,0.7));pointer-events:none;z-index:0}
+  .app{position:relative;z-index:1}
+  .header{padding:24px 20px 20px;text-align:center}
+  .ship-logo{display:inline-flex;align-items:center;gap:12px;margin-bottom:8px;justify-content:center}
+  .ship-icon{color:var(--primary);filter:drop-shadow(0 0 20px var(--primary-glow));animation:shipFloat 4s ease-in-out infinite}
+  @keyframes shipFloat{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-5px) rotate(-2deg)}75%{transform:translateY(5px) rotate(2deg)}}
+  .header h1{font-size:28px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--primary),var(--primary-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .header .sub{font-size:10px;color:var(--text-dim);margin-top:6px;letter-spacing:3px;text-transform:uppercase}
+  .user-card{margin:0 20px 20px;padding:20px;background:linear-gradient(135deg,rgba(64,212,168,0.08),rgba(15,23,42,0.6));border:2px solid var(--border);border-radius:20px;display:flex;align-items:center;gap:16px;backdrop-filter:blur(20px);position:relative;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+  .avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:flex;align-items:center;justify-content:center;color:var(--deep-sea);flex-shrink:0;box-shadow:0 4px 20px var(--primary-glow);border:3px solid var(--primary);font-size:24px;font-weight:800}
+  .user-info{flex:1;min-width:0}
+  .user-info .name{font-weight:700;font-size:16px;color:var(--primary)}
+  .user-info .id{font-size:11px;color:var(--text-dim);margin-top:2px;font-family:'SF Mono',Monaco,monospace}
+  .user-badge{padding:6px 12px;background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:var(--deep-sea);border-radius:12px;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;box-shadow:0 2px 10px var(--primary-glow)}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;padding:0 20px}
+  .stat{background:linear-gradient(135deg,var(--bg-card),var(--bg-card-solid));border:1px solid var(--border);border-radius:20px;padding:16px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+  .stat-icon{font-size:28px;margin-bottom:6px;color:var(--primary);filter:drop-shadow(0 0 10px var(--primary-glow));display:flex;justify-content:center}
+  .stat-value{font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--primary),var(--primary-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .stat-label{font-size:10px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+  .card{background:linear-gradient(135deg,var(--bg-card),var(--bg-card-solid));border:1px solid var(--border);border-radius:20px;padding:18px;margin:0 20px 14px;transition:all 0.2s;position:relative;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--primary),transparent);opacity:0.5}
+  .card:active{transform:scale(0.98);border-color:var(--border-strong)}
+  .order-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+  .order-id{font-size:13px;color:var(--text-dim);font-family:'SF Mono',Monaco,monospace}
+  .order-id b{color:var(--primary);font-size:15px}
+  .status{padding:5px 12px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;border:1px solid}
+  .status.pending{background:rgba(64,212,168,0.1);color:var(--primary);border-color:rgba(64,212,168,0.4)}
+  .status.paid{background:rgba(94,234,212,0.1);color:var(--primary-light);border-color:rgba(94,234,212,0.4)}
+  .status.shipped{background:rgba(45,212,191,0.1);color:#67e8f9;border-color:rgba(45,212,191,0.4)}
+  .status.delivered{background:rgba(16,185,129,0.1);color:#34d399;border-color:rgba(16,185,129,0.4)}
+  .status.ready{background:rgba(239,68,68,0.1);color:#f87171;border-color:rgba(239,68,68,0.4)}
+  .order-items{font-size:13px;color:var(--text-dim);margin-bottom:12px;line-height:1.6}
+  .order-items span{color:var(--pearl)}
+  .order-foot{display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid var(--border)}
+  .price{font-size:18px;font-weight:800;background:linear-gradient(135deg,var(--primary),var(--primary-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .track-btn{background:linear-gradient(135deg,var(--primary-dark),var(--primary));color:var(--deep-sea);border:none;padding:8px 16px;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 15px var(--primary-glow)}
+  .track-btn:active{transform:scale(0.95)}
+  .nav{position:fixed;bottom:0;left:0;right:0;background:rgba(10,15,28,0.95);backdrop-filter:blur(20px);border-top:2px solid var(--border);display:flex;padding:10px 0 calc(10px + env(safe-area-inset-bottom));z-index:100}
+  .nav::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--primary),transparent);opacity:0.5}
+  .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:10px;font-weight:600;transition:all 0.2s}
+  .nav-item .icon{font-size:24px;transition:all 0.2s;color:var(--primary)}
+  .nav-item.active{color:var(--primary)}
+  .nav-item.active .icon{filter:drop-shadow(0 0 10px var(--primary-glow));transform:translateY(-3px)}
+  .page{display:none;padding:0 20px;animation:fadeIn 0.4s ease}
+  .page.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .page-title{font-size:20px;font-weight:800;margin-bottom:20px;color:var(--primary)}
+  .empty{text-align:center;padding:50px 20px;color:var(--text-dim)}
+  .empty-icon{font-size:64px;margin-bottom:16px;opacity:0.5}
+  .modal{display:none;position:fixed;inset:0;background:rgba(2,6,23,0.9);backdrop-filter:blur(10px);z-index:200;align-items:flex-end;justify-content:center}
+  .modal.active{display:flex}
+  .modal-content{background:linear-gradient(180deg,var(--bg-card-solid),var(--bg-card));border:2px solid var(--border-strong);border-radius:28px 28px 0 0;padding:28px 24px calc(24px + env(safe-area-inset-bottom));width:100%;max-width:500px;max-height:85vh;overflow-y:auto;animation:slideUp 0.3s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-title{font-size:20px;font-weight:800;margin-bottom:20px;text-align:center;color:var(--primary)}
+  .modal-close{width:100%;background:var(--bg-card-solid);color:var(--text);border:1px solid var(--border);padding:16px;border-radius:16px;font-size:14px;font-weight:600;margin-top:20px;cursor:pointer}
+  .timeline{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+  .tl-step{display:flex;gap:14px;padding-bottom:14px;position:relative}
+  .tl-step:not(:last-child)::before{content:'';position:absolute;left:13px;top:26px;bottom:0;width:2px;background:var(--border)}
+  .tl-step.done:not(:last-child)::before{background:linear-gradient(180deg,var(--primary),var(--primary-light))}
+  .tl-dot{width:28px;height:28px;border-radius:50%;background:var(--bg-card-solid);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;z-index:1}
+  .tl-step.done .tl-dot{background:linear-gradient(135deg,var(--primary),var(--primary-light));border-color:transparent;color:var(--deep-sea);font-weight:800;box-shadow:0 0 15px var(--primary-glow)}
+  .tl-info{flex:1;padding-top:4px}
+  .tl-title{font-size:13px;font-weight:600}
+  .tl-step:not(.done) .tl-title{color:var(--text-dim)}
+  .tl-date{font-size:11px;color:var(--text-dim);margin-top:2px}
+  .admin-panel{display:none;margin:0 20px 20px;padding:16px;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:16px}
+  .admin-panel.visible{display:block}
+  .admin-panel label{display:block;margin-bottom:8px;color:var(--primary);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px}
+  .admin-panel select{width:100%;padding:10px;background:var(--bg-card-solid);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;cursor:pointer}
+  .admin-panel select:focus{outline:none;border-color:var(--primary)}
+  .admin-panel .admin-label{font-size:10px;color:var(--text-dim);margin-top:6px;text-align:center}
+  .loading{text-align:center;padding:40px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="ship-logo">
+      <div class="ship-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
+      </div>
+      <h1>BLACK PEARL</h1>
+    </div>
+    <div class="sub">k-pop treasure hunt</div>
+  </div>
+  <div class="user-card">
+    <div class="avatar" id="userAvatar">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>
+    <div class="user-info">
+      <div class="name" id="userName">Загрузка...</div>
+      <div class="id" id="userId">id: ---</div>
+    </div>
+    <div class="user-badge">VIP</div>
+  </div>
+  <div class="admin-panel" id="adminPanel">
+    <label>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Панель админа — тема:
+    </label>
+    <select id="themeSelect" onchange="adminSetTheme(this.value)">
+      <option value="pirate">⚓ Pirate Default</option>
+      <option value="newjeans_ditto">NewJeans — Ditto</option>
+      <option value="newjeans_supershy">NewJeans — Super Shy</option>
+      <option value="bts_butter">BTS — Butter</option>
+      <option value="aespa_supernova">aespa — Supernova</option>
+      <option value="aespa_drama">aespa — Drama</option>
+      <option value="seventeen_godofmusic">SEVENTEEN — God of Music</option>
+      <option value="straykids_rockstar">Stray Kids — Rock-Star</option>
+      <option value="lesserafim_easy">LE SSERAFIM — Easy</option>
+      <option value="enhypen_romance">ENHYPEN — Romance</option>
+      <option value="ive_baddie">IVE — Baddie</option>
+      <option value="twice_withyouth">TWICE — With YOU-th</option>
+      <option value="blackpink_pinkvenom">BLACKPINK — Pink Venom</option>
+    </select>
+    <div class="admin-label">Изменение применится для всех пользователей</div>
+  </div>
+  <div class="page active" id="page-home">
+    <div class="page-title">🏴‍☠️ Сокровища</div>
+    <div class="stats-grid">
+      <div class="stat"><div class="stat-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><div class="stat-value" id="statOrders">0</div><div class="stat-label">Заказов</div></div>
+      <div class="stat"><div class="stat-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M15 9.5c-1.5-1-4.5-1-6 0"/></svg></div><div class="stat-value" id="statPaid">0 ₽</div><div class="stat-label">Сокровища</div></div>
+      <div class="stat"><div class="stat-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9 1.1 5.6 3 7.6"/></svg></div><div class="stat-value" id="statShipped">0</div><div class="stat-label">В плавании</div></div>
+      <div class="stat"><div class="stat-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/></svg></div><div class="stat-value" id="statReady">0</div><div class="stat-label">На острове</div></div>
+    </div>
+    <div class="card" onclick="showPage('orders')" style="cursor:pointer">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="color:var(--primary)"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></div>
+        <div style="flex:1"><div style="font-weight:700;font-size:15px;color:var(--primary)">Карта заказов</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px">Отследить путь сокровищ</div></div>
+        <div style="color:var(--primary);font-size:24px">›</div>
+      </div>
+    </div>
+    <div class="card" onclick="showPage('boxes')" style="cursor:pointer">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="color:var(--primary)"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+        <div style="flex:1"><div style="font-weight:700;font-size:15px;color:var(--primary)">Сундуки</div><div style="font-size:12px;color:var(--text-dim);margin-top:2px">Забрать добычу</div></div>
+        <div style="color:var(--primary);font-size:24px">›</div>
+      </div>
+    </div>
+  </div>
+  <div class="page" id="page-orders"><div class="page-title">🗺️ Карта заказов</div><div id="ordersList"><div class="loading">Загрузка...</div></div></div>
+  <div class="page" id="page-boxes"><div class="page-title">🏝️ На острове</div><div id="boxesList"><div class="loading">Загрузка...</div></div></div>
+  <nav class="nav">
+    <button class="nav-item active" data-page="home"><span class="icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg></span><span>База</span></button>
+    <button class="nav-item" data-page="orders"><span class="icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span><span>Карта</span></button>
+    <button class="nav-item" data-page="boxes"><span class="icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></span><span>Сундуки</span></button>
+  </nav>
+</div>
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <div class="modal-title" id="modalTitle">Детали</div>
+    <div id="modalBody"></div>
+    <button class="modal-close" onclick="closeModal()">Закрыть</button>
+  </div>
+</div>
+<script>
+const THEMES={
+  pirate:{primary:'#40d4a8',primaryDark:'#14b8a6',primaryLight:'#5eead4',primaryGlow:'rgba(64,212,168,0.5)',border:'rgba(64,212,168,0.2)',borderStrong:'rgba(64,212,168,0.4)',bg:'#0a0f1c',bgCard:'rgba(15,23,42,0.7)',bgCardSolid:'#0f172a'},
+  newjeans_ditto:{primary:'#f4a5c4',primaryDark:'#d4789f',primaryLight:'#f9c5d9',primaryGlow:'rgba(244,165,196,0.5)',border:'rgba(244,165,196,0.2)',borderStrong:'rgba(244,165,196,0.4)',bg:'#1a1520',bgCard:'rgba(35,25,40,0.7)',bgCardSolid:'#231928'},
+  newjeans_supershy:{primary:'#ec4899',primaryDark:'#be185d',primaryLight:'#f472b6',primaryGlow:'rgba(236,72,153,0.5)',border:'rgba(236,72,153,0.2)',borderStrong:'rgba(236,72,153,0.4)',bg:'#1a0f18',bgCard:'rgba(42,20,35,0.7)',bgCardSolid:'#2a1423'},
+  bts_butter:{primary:'#fbbf24',primaryDark:'#d97706',primaryLight:'#fcd34d',primaryGlow:'rgba(251,191,36,0.5)',border:'rgba(251,191,36,0.2)',borderStrong:'rgba(251,191,36,0.4)',bg:'#1a1810',bgCard:'rgba(42,38,25,0.7)',bgCardSolid:'#2a2619'},
+  aespa_supernova:{primary:'#a78bfa',primaryDark:'#7c3aed',primaryLight:'#c4b5fd',primaryGlow:'rgba(167,139,250,0.5)',border:'rgba(167,139,250,0.2)',borderStrong:'rgba(167,139,250,0.4)',bg:'#120f1e',bgCard:'rgba(28,22,45,0.7)',bgCardSolid:'#1c162d'},
+  aespa_drama:{primary:'#ef4444',primaryDark:'#b91c1c',primaryLight:'#f87171',primaryGlow:'rgba(239,68,68,0.5)',border:'rgba(239,68,68,0.2)',borderStrong:'rgba(239,68,68,0.4)',bg:'#1a0a0a',bgCard:'rgba(42,15,15,0.7)',bgCardSolid:'#2a0f0f'},
+  seventeen_godofmusic:{primary:'#eab308',primaryDark:'#a16207',primaryLight:'#facc15',primaryGlow:'rgba(234,179,8,0.5)',border:'rgba(234,179,8,0.2)',borderStrong:'rgba(234,179,8,0.4)',bg:'#1a1608',bgCard:'rgba(42,35,15,0.7)',bgCardSolid:'#2a230f'},
+  straykids_rockstar:{primary:'#dc2626',primaryDark:'#991b1b',primaryLight:'#f87171',primaryGlow:'rgba(220,38,38,0.5)',border:'rgba(220,38,38,0.2)',borderStrong:'rgba(220,38,38,0.4)',bg:'#1a0a0a',bgCard:'rgba(42,15,15,0.7)',bgCardSolid:'#2a0f0f'},
+  lesserafim_easy:{primary:'#38bdf8',primaryDark:'#0284c7',primaryLight:'#7dd3fc',primaryGlow:'rgba(56,189,248,0.5)',border:'rgba(56,189,248,0.2)',borderStrong:'rgba(56,189,248,0.4)',bg:'#0a1628',bgCard:'rgba(15,35,60,0.7)',bgCardSolid:'#0f2340'},
+  enhypen_romance:{primary:'#94a3b8',primaryDark:'#64748b',primaryLight:'#cbd5e1',primaryGlow:'rgba(148,163,184,0.5)',border:'rgba(148,163,184,0.2)',borderStrong:'rgba(148,163,184,0.4)',bg:'#0a0f1e',bgCard:'rgba(15,25,50,0.7)',bgCardSolid:'#0f1932'},
+  ive_baddie:{primary:'#f472b6',primaryDark:'#db2777',primaryLight:'#fbcfe8',primaryGlow:'rgba(244,114,182,0.5)',border:'rgba(244,114,182,0.2)',borderStrong:'rgba(244,114,182,0.4)',bg:'#1a0a14',bgCard:'rgba(42,15,30,0.7)',bgCardSolid:'#2a0f1e'},
+  twice_withyouth:{primary:'#fda4af',primaryDark:'#e11d48',primaryLight:'#fecdd3',primaryGlow:'rgba(253,164,175,0.5)',border:'rgba(253,164,175,0.2)',borderStrong:'rgba(253,164,175,0.4)',bg:'#1a1018',bgCard:'rgba(42,25,35,0.7)',bgCardSolid:'#2a1923'},
+  blackpink_pinkvenom:{primary:'#ff1493',primaryDark:'#cc0077',primaryLight:'#ff69b4',primaryGlow:'rgba(255,20,147,0.5)',border:'rgba(255,20,147,0.2)',borderStrong:'rgba(255,20,147,0.4)',bg:'#0f0a0f',bgCard:'rgba(25,15,25,0.7)',bgCardSolid:'#190f19'}
+};
+function applyTheme(name){const t=THEMES[name];if(!t)return;const r=document.documentElement.style;r.setProperty('--primary',t.primary);r.setProperty('--primary-dark',t.primaryDark);r.setProperty('--primary-light',t.primaryLight);r.setProperty('--primary-glow',t.primaryGlow);r.setProperty('--border',t.border);r.setProperty('--border-strong',t.borderStrong);r.setProperty('--bg',t.bg);r.setProperty('--bg-card',t.bgCard);r.setProperty('--bg-card-solid',t.bgCardSolid)}
+const tg=window.Telegram?.WebApp;if(tg){tg.ready();tg.expand();tg.setHeaderColor('#0a0f1c');tg.setBackgroundColor('#0a0f1c')}
+const user=tg?.initDataUnsafe?.user;const userData={id:user?.id||123456789,firstName:user?.first_name||'Пират',lastName:user?.last_name||'',username:user?.username||'pirate'};
+document.getElementById('userName').textContent=`${userData.firstName} ${userData.lastName}`.trim();
+document.getElementById('userId').textContent=`id: ${userData.id}`;
+const API_URL='https://script.google.com/macros/s/AKfycbxsmQHp9uwLhKwoiTKq7d0kwksuShCpR5oO_nqFEqr9kOqPxlZmpzN7EQmQSKwe9eYO/exec';
+async function loadTheme(){try{const res=await fetch(`${API_URL}?action=getTheme`);const data=await res.json();applyTheme(data.theme||'pirate');document.getElementById('themeSelect').value=data.theme||'pirate'}catch(e){applyTheme('pirate')}}
+async function checkAdmin(){try{const res=await fetch(`${API_URL}?action=isAdmin&userId=${userData.id}`);const data=await res.json();if(data.isAdmin)document.getElementById('adminPanel').classList.add('visible')}catch(e){}}
+async function adminSetTheme(themeName){try{await fetch(API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'setTheme',theme:themeName})});applyTheme(themeName)}catch(e){alert('Ошибка сохранения')}}
+function showPage(name){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+name).classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.querySelector(`.nav-item[data-page="${name}"]`)?.classList.add('active')}
+document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showPage(btn.dataset.page)));
+const orders=[{id:'BP-2026-0142',items:['NewJeans — Ditto PB','BTS — Butter Set'],total:8450,status:'shipped',created:'2026-06-15',timeline:[{title:'Заказ создан',date:'15 июн',done:true},{title:'Оплачен',date:'15 июн',done:true},{title:'В пути',date:'28 июн',done:true},{title:'Готов',date:'—',done:false}]},{id:'BP-2026-0098',items:['aespa — Drama Album'],total:3200,status:'delivered',created:'2026-05-20',timeline:[{title:'Заказ создан',date:'20 мая',done:true},{title:'Оплачен',date:'20 мая',done:true},{title:'Получен',date:'18 июн',done:true}]}];
+const boxes=[{id:'BOX-7721',orderId:'BP-2026-0142',address:'Москва, Тверская 15',items:['NewJeans Ditto PB'],readyDate:'05 июл',pickupCode:'A-42'}];
+const statusLabels={pending:'Ждёт оплаты',paid:'Оплачен',shipped:'В плавании',delivered:'Получен',ready:'На острове'};
+function renderOrders(){document.getElementById('ordersList').innerHTML=orders.length?orders.map(o=>`<div class="card"><div class="order-head"><div class="order-id">№ <b>${o.id}</b></div><div class="status ${o.status}">${statusLabels[o.status]}</div></div><div class="order-items">${o.items.map(i=>'<span>'+i+'</span>').join('<br>')}</div><div class="order-foot"><div class="price">${o.total.toLocaleString('ru')} ₽</div><button class="track-btn" onclick="showDetails('${o.id}')">На карту →</button></div></div>`).join(''):'<div class="empty"><div class="empty-icon">‍☠️</div>Нет сокровищ</div>'}
+function renderBoxes(){document.getElementById('boxesList').innerHTML=boxes.length?boxes.map(b=>`<div class="card"><div style="font-weight:700;color:var(--primary);margin-bottom:8px">📦 ${b.id}</div><div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">${b.address}</div><button class="track-btn" onclick="showCode('${b.pickupCode}')">Показать код</button></div>`).join(''):'<div class="empty"><div class="empty-icon">📦</div>Нет сундуков</div>'}
+function showDetails(id){const o=orders.find(x=>x.id===id);if(!o)return;document.getElementById('modalTitle').textContent=`⚓ ${o.id}`;document.getElementById('modalBody').innerHTML=`<div style="margin-bottom:16px">${o.items.map(i=>`<div style="padding:6px 0;border-bottom:1px solid var(--border)">${i}</div>`).join('')}</div><div class="timeline">${o.timeline.map(s=>`<div class="tl-step ${s.done?'done':''}"><div class="tl-dot">${s.done?'✓':'○'}</div><div class="tl-info"><div class="tl-title">${s.title}</div><div class="tl-date">${s.date}</div></div></div>`).join('')}</div>`;document.getElementById('modal').classList.add('active')}
+function showCode(code){document.getElementById('modalTitle').textContent='⚓ Код выдачи';document.getElementById('modalBody').innerHTML=`<div style="text-align:center;padding:20px"><div style="font-size:48px;font-weight:900;background:linear-gradient(135deg,var(--primary),var(--primary-light));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:8px;padding:24px;border:2px solid var(--primary);border-radius:16px">${code}</div></div>`;document.getElementById('modal').classList.add('active')}
+function closeModal(){document.getElementById('modal').classList.remove('active')}
+document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
+loadTheme();checkAdmin();renderOrders();renderBoxes();
+</script>
+</body>
+</html>
