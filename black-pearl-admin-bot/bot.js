@@ -81,13 +81,36 @@ async function apiGet(action, params = {}) {
   const url = new URL(API);
   url.searchParams.set('action', action);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString());
-  return res.json();
+  
+  console.log('📡 API GET:', action, params);
+  
+  try {
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    console.log('📥 API ответ:', action, JSON.stringify(data).substring(0, 200));
+    return data;
+  } catch(e) {
+    console.error('❌ API GET ошибка:', action, e.message);
+    throw e;
+  }
 }
 
 async function apiPost(data) {
-  const res = await fetch(API, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
-  return res.json();
+  console.log('📡 API POST:', data.action, JSON.stringify(data).substring(0, 200));
+  
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    console.log('📥 API POST ответ:', data.action, JSON.stringify(result).substring(0, 200));
+    return result;
+  } catch(e) {
+    console.error('❌ API POST ошибка:', data.action, e.message);
+    throw e;
+  }
 }
 
 const STATUS_EMOJI = {pending: '⏳', paid: '💎', shipped: '🌊', ready: '📦', delivered: '✅'};
