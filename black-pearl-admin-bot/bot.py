@@ -453,7 +453,7 @@ async def cmd_orders(message: Message):
         text += f"🦪 <b>{o.get('order_id')}</b>\n"
         text += f"├ {o.get('status')}\n"
         text += f"├ 💎 {o.get('total', 0)} ₽\n"
-        text += f"└ 👤 {o.get('telegram_id')}\n\n"
+        text += f"└ 👤 @{o.get('username')}\n\n"
     
     await message.answer(text, parse_mode="HTML")
 
