@@ -29,18 +29,35 @@ async def api_get(action, params=None):
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     user = message.from_user
+    username = user.username or ''
     
+    # Регистрируем/обновляем пользователя
     try:
         async with session.post(API_URL, json={
             'action': 'upsertUser',
             'telegram_id': user.id,
-            'username': user.username or '',
+            'username': username,
             'first_name': user.first_name or '',
             'last_name': user.last_name or ''
         }) as resp:
-            pass
+            result = await resp.json()
+            print(f"👤 Пользователь {user.id} (@{username}): {result.get('action')}")
     except Exception as e:
-        print(f"Ошибка upsertUser: {e}")
+        print(f" Ошибка upsertUser: {e}")
+    
+    # Если есть username — обновляем telegram_id в существующей записи
+    if username:
+        try:
+            async with session.post(API_URL, json={
+                'action': 'updateTelegramIdByUsername',
+                'username': username,
+                'telegram_id': user.id
+            }) as resp:
+                result = await resp.json()
+                if result.get('action') == 'updated':
+                    print(f"✅ Обновлён telegram_id для @{username}: {user.id}")
+        except Exception as e:
+            print(f" Ошибка updateTelegramIdByUsername: {e}")
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🖤 Открыть магазин", web_app=WebAppInfo(url=MINI_APP_URL))]
