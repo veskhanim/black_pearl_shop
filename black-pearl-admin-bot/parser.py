@@ -101,3 +101,38 @@ def find_price_for_position(position_name: str, price_list: dict) -> int:
         if position_name.lower() in key or key in position_name.lower():
             return val['price']
     return 0
+    
+async def ensure_users_in_db(usernames: list, session: aiohttp.ClientSession):
+    """
+    Проверяет всех пользователей в базе и создаёт отсутствующих.
+    Возвращает словарь {username: telegram_id}
+    """
+    user_map = {}
+    
+    for username in usernames:
+        if not username:
+            continue
+        
+        try:
+            async with session.post(API_URL, json={
+                'action': 'upsertUserByUsername',
+                'username': username
+            }) as resp:
+                result = await resp.json()
+                
+                if result.get('success'):
+                    user_map[username] = result.get('telegram_id')
+                    action = result.get('action')
+                    if action == 'created':
+                        print(f"✅ Создан пользователь: @{username}")
+                    else:
+                        print(f" Найден пользователь: @{username} (ID: {result.get('telegram_id')})")
+                else:
+                    print(f"❌ Ошибка upsertUserByUsername для @{username}: {result.get('error')}")
+                    user_map[username] = None
+                    
+        except Exception as e:
+            print(f"❌ Ошибка запроса для @{username}: {e}")
+            user_map[username] = None
+    
+    return user_map
