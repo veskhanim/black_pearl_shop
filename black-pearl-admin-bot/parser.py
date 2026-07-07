@@ -106,10 +106,11 @@ def find_price_for_position(position_name: str, price_list: dict) -> int:
 # ===== НОВАЯ ФУНКЦИЯ: АВТОДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
 async def ensure_users_in_db(usernames: list, session):
     """
-    Проверяет всех пользователей в базе и создаёт отсутствующих.
-    Возвращает словарь {username: telegram_id}
+    Проверяет пользователей и создаёт отсутствующих.
+    Возвращает (user_map, new_users) — словарь и список новых.
     """
     user_map = {}
+    new_users = []
     
     for username in usernames:
         if not username:
@@ -124,17 +125,17 @@ async def ensure_users_in_db(usernames: list, session):
                 
                 if result.get('success'):
                     user_map[username] = result.get('telegram_id')
-                    action = result.get('action')
-                    if action == 'created':
+                    if result.get('action') == 'created':
+                        new_users.append(username)
                         print(f"✅ Создан пользователь: @{username}")
                     else:
-                        print(f" Найден пользователь: @{username} (ID: {result.get('telegram_id')})")
+                        print(f"🔍 Найден: @{username}")
                 else:
-                    print(f"❌ Ошибка upsertUserByUsername для @{username}: {result.get('error')}")
+                    print(f"❌ Ошибка для @{username}: {result.get('error')}")
                     user_map[username] = None
                     
         except Exception as e:
-            print(f" Ошибка запроса для @{username}: {e}")
+            print(f"❌ Ошибка запроса для @{username}: {e}")
             user_map[username] = None
     
-    return user_map
+    return user_map, new_users
