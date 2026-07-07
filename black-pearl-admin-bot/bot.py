@@ -8,9 +8,12 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from parser import (
-    detect_post_type, parse_positions_post, 
-    parse_signup_post, parse_payment_post, 
-    find_price_for_position
+    detect_post_type, 
+    parse_positions_post, 
+    parse_signup_post, 
+    parse_payment_post, 
+    find_price_for_position,
+    ensure_users_in_db 
 )
 
 load_dotenv()
