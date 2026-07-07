@@ -3,6 +3,8 @@ import aiohttp
 import os
 API_URL = os.getenv('APPS_SCRIPT_URL')
 
+# ===== ФУНКЦИИ ПАРСИНГА (без изменений) =====
+
 def detect_post_type(text: str) -> str:
     if re.search(r'@\w+\s*[-—]\s*\d+', text) and not re.search(r'^\d+\.\s+.+@', text, re.MULTILINE):
         return 'payment'
@@ -22,7 +24,6 @@ def parse_positions_post(text: str) -> dict:
     if hashtag_match:
         result['hashtag'] = '#' + hashtag_match.group(1)
     
-    # Справочник цен
     first_pos_idx = next((i for i, l in enumerate(lines) if re.match(r'^\d+\.\s+', l)), len(lines))
     for line in lines[:first_pos_idx]:
         match = re.match(r'^(.+?)\s+(?:по\s+)?(\d[\d\s]*)\s*(?:₽|руб|rub|сум)', line, re.IGNORECASE)
@@ -32,7 +33,6 @@ def parse_positions_post(text: str) -> dict:
             if name and price:
                 result['priceList'][name.lower()] = {'name': match.group(1).strip(), 'price': price}
     
-    # Разбивка на блоки
     blocks = []
     current_block = None
     for line in lines:
@@ -50,7 +50,6 @@ def parse_positions_post(text: str) -> dict:
             current_block['queueLines'].append(line)
     if current_block: blocks.append(current_block)
     
-    # Парсинг очередей
     for block in blocks:
         position = {
             'number': block['positionNum'],
@@ -76,7 +75,6 @@ def parse_signup_post(text: str) -> dict:
     price_match = re.search(r'по\s+(\d[\d\s]*)\s*(?:₽|руб|rub|сум)', text, re.IGNORECASE)
     if price_match: result['price'] = int(price_match.group(1).replace(' ', ''))
     
-    # Упрощенный парсинг для старого формата (Имя @username)
     for line in lines[1:]:
         m = re.match(r'^([А-Яа-яA-Za-z]+)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?', line)
         if m:
@@ -104,7 +102,8 @@ def find_price_for_position(position_name: str, price_list: dict) -> int:
         if position_name.lower() in key or key in position_name.lower():
             return val['price']
     return 0
-    
+
+# ===== НОВАЯ ФУНКЦИЯ: АВТОДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
 async def ensure_users_in_db(usernames: list, session):
     """
     Проверяет всех пользователей в базе и создаёт отсутствующих.
@@ -135,7 +134,7 @@ async def ensure_users_in_db(usernames: list, session):
                     user_map[username] = None
                     
         except Exception as e:
-            print(f"❌ Ошибка запроса для @{username}: {e}")
+            print(f" Ошибка запроса для @{username}: {e}")
             user_map[username] = None
     
     return user_map
