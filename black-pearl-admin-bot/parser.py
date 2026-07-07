@@ -68,20 +68,74 @@ def parse_positions_post(text: str) -> dict:
     return result
 
 def parse_signup_post(text: str) -> dict:
+    """
+    Парсит пост записи с очередями.
+    Цена — первое число, за которым идёт знак ₽.
+    """
     result = {'postTitle': None, 'price': None, 'entries': []}
     lines = [l.strip() for l in text.split('\n') if l.strip()]
-    if lines: result['postTitle'] = lines[0]
     
-    price_match = re.search(r'по\s+(\d[\d\s]*)\s*(?:₽|руб|rub|сум)', text, re.IGNORECASE)
-    if price_match: result['price'] = int(price_match.group(1).replace(' ', ''))
+    if not lines:
+        return result
     
-    for line in lines[1:]:
-        m = re.match(r'^([А-Яа-яA-Za-z]+)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?', line)
-        if m:
-            result['entries'].append({
-                'name': m.group(1), 'username': m.group(2), 
-                'deadline': m.group(3), 'queue': 1, 'telegramId': None
-            })
+    # Заголовок — первая непустая строка
+    result['postTitle'] = lines[0]
+    
+    # Цена: ищем число, за которым идёт ₽ (с пробелом или без)
+    # Паттерн: число (возможно с пробелами-разделителями тысяч) + ₽
+    price_match = re.search(r'(\d[\d\s]*?)\s*₽', text)
+    if price_match:
+        price_str = price_match.group(1).replace(' ', '')
+        if price_str:
+            result['price'] = int(price_str)
+    
+    # Разбиваем на очереди
+    queues = []
+    current_queue = None
+    current_lines = []
+    
+    for line in lines:
+        queue_match = re.match(r'^(\d+)\s+очередь', line, re.IGNORECASE)
+        if queue_match:
+            if current_queue is not None and current_lines:
+                queues.append({'number': current_queue, 'lines': current_lines})
+            current_queue = int(queue_match.group(1))
+            current_lines = []
+        elif current_queue is not None:
+            current_lines.append(line)
+        else:
+            if current_queue is None:
+                current_queue = 1
+                current_lines.append(line)
+    
+    if current_queue is not None and current_lines:
+        queues.append({'number': current_queue, 'lines': current_lines})
+    
+    # Парсим записи в каждой очереди
+    for queue in queues:
+        for line in queue['lines']:
+            # Паттерн 1: "Имя @username //дата"
+            m = re.match(
+                r'^([А-Яа-яA-Za-zёЁ]+)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', 
+                line
+            )
+            if m:
+                result['entries'].append({
+                    'name': m.group(1),
+                    'username': m.group(2),
+                    'deadline': m.group(3),
+                    'queue': queue['number'],
+                    'telegramId': None
+                })
+                continue
+            
+            # Паттерн 2: свободный слот (без username) — пропускаем 
+            # TODO Админы тоже должны писать свои ники или потом подставлять их из базы
+            m2 = re.match(r'^([А-Яа-яA-Za-zёЁ]+)\s*(?:[🥰💖❤️🔥✨🌸]|\s)*$', line)
+            if m2:
+                print(f"⏭️ Занято админом в очереди {queue['number']}: {m2.group(1)}")
+                continue
+    
     return result
 
 def parse_payment_post(text: str) -> dict:
