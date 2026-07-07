@@ -579,6 +579,110 @@ async def cmd_theme(message: Message):
         )
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+# ===== /block =====
+@router.message(Command("block"))
+async def cmd_block(message: Message):
+    admin = await get_admin(message.from_user.id)
+    if not admin:
+        return await message.answer("⛔ Только для админов")
+    
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        return await message.answer(
+            "🔒 <b>Блокировка пользователя</b>\n\n"
+            "Формат: <code>/block username причина</code>\n\n"
+            "Пример: <code>/block bad_user спам и мошенничество</code>",
+            parse_mode="HTML"
+        )
+    
+    username = parts[1].lstrip('@')
+    reason = parts[2]
+    
+    try:
+        result = await api_post({
+            'action': 'blockUser',
+            'username': username,
+            'reason': reason,
+            'blockedBy': admin['name']
+        })
+        
+        if result.get('success'):
+            await message.answer(
+                f"🔒 <b>Пользователь заблокирован!</b>\n\n"
+                f"👤 @{username}\n"
+                f"📝 Причина: {reason}\n"
+                f"👮 Заблокировал: {admin['name']}\n\n"
+                f"Пользователь больше не сможет открыть мини-приложение.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(f"❌ Ошибка: {result.get('error')}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+# ===== /unblock =====
+@router.message(Command("unblock"))
+async def cmd_unblock(message: Message):
+    admin = await get_admin(message.from_user.id)
+    if not admin:
+        return await message.answer("⛔ Только для админов")
+    
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        return await message.answer(
+            "🔓 <b>Разблокировка пользователя</b>\n\n"
+            "Формат: <code>/unblock username</code>\n\n"
+            "Пример: <code>/unblock bad_user</code>",
+            parse_mode="HTML"
+        )
+    
+    username = parts[1].lstrip('@')
+    
+    try:
+        result = await api_post({
+            'action': 'unblockUser',
+            'username': username
+        })
+        
+        if result.get('success'):
+            await message.answer(
+                f"🔓 <b>Пользователь разблокирован!</b>\n\n"
+                f"👤 @{username}\n"
+                f"👮 Разблокировал: {admin['name']}",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(f"❌ Ошибка: {result.get('error')}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+# ===== /blocked =====
+@router.message(Command("blocked"))
+async def cmd_blocked(message: Message):
+    admin = await get_admin(message.from_user.id)
+    if not admin:
+        return await message.answer("⛔ Только для админов")
+    
+    try:
+        blocked = await api_get('getBlockedUsers')
+        
+        if not blocked or not isinstance(blocked, list) or not len(blocked):
+            return await message.answer("✅ Нет заблокированных пользователей")
+        
+        text = f" <b>Заблокированные ({len(blocked)})</b>\n\n"
+        for u in blocked[:20]:
+            text += f"👤 <b>@{u.get('username', 'unknown')}</b>\n"
+            text += f"   📝 {u.get('reason', 'Без причины')}\n"
+            text += f"   🆔 {u.get('telegram_id')}\n\n"
+        
+        if len(blocked) > 20:
+            text += f"... и ещё {len(blocked) - 20}\n"
+        
+        await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        
 # ===== ЗАПУСК =====
 async def main():
     global session
