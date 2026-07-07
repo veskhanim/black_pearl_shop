@@ -38,7 +38,8 @@ async def cmd_start(message: Message):
             'telegram_id': user.id,
             'username': username,
             'first_name': user.first_name or '',
-            'last_name': user.last_name or ''
+            'last_name': user.last_name or '',
+            'blocked': 'TRUE'
         }) as resp:
             result = await resp.json()
             print(f"👤 Пользователь {user.id} (@{username}): {result.get('action')}")
