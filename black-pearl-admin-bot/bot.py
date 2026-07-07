@@ -444,8 +444,8 @@ async def cmd_orders(message: Message, session: aiohttp.ClientSession):
     if not isinstance(orders, list):
         return await message.answer(f"❌ Ошибка: {orders}")
     
-    # Показываем только не полученные заказы
-    active = [o for o in orders if o.get('status') != 'Получен']
+    # Показываем только неоплаченные и не отменённые
+    active = [o for o in orders if o.get('status') in ['Ожидает', 'Оплачен']]
     if not active:
         return await message.answer("✅ Нет активных заказов")
     
@@ -453,28 +453,34 @@ async def cmd_orders(message: Message, session: aiohttp.ClientSession):
     for o in active[:15]:
         text += f"🦪 <b>{o.get('order_id')}</b>\n"
         text += f"├ {o.get('status')}\n"
-        text += f"├  {o.get('total', 0)} ₽\n"
+        text += f" 💎 {o.get('total', 0)} ₽\n"
         text += f"└ 👤 {o.get('telegram_id')}\n\n"
     
     await message.answer(text, parse_mode="HTML")
 
 # ===== /stats =====
-@router.message(Command("stats"))
-async def cmd_stats(message: Message):
-    admin = await get_admin(message.from_user.id)
+@router.message(Command("status"))
+async def cmd_status(message: Message, session: aiohttp.ClientSession):
+    admin = await get_admin(message.from_user.id, session)
     if not admin:
         return
     
-    stats = await api_get('getStats', {'userId': 'all'})
+    orders = await api_get('getOrders', {'userId': 'all'})
+    if not isinstance(orders, list):
+        orders = []
+    
+    pending = len([o for o in orders if o.get('status') == 'Ожидает'])
+    paid = len([o for o in orders if o.get('status') == 'Оплачен'])
+    cancelled = len([o for o in orders if o.get('status') == 'Отменён'])
+    refund = len([o for o in orders if o.get('status') == 'Возврат'])
+    
     text = (
         f"📊 <b>BLACK PEARL — Статистика</b>\n\n"
-        f"🦪 Всего заказов: <b>{stats.get('totalOrders', 0)}</b>\n"
-        f"💎 Выручка: <b>{stats.get('totalRevenue', 0)} ₽</b>\n\n"
-        f"⏳ Ожидают: {stats.get('pending', 0)}\n"
-        f"💎 Оплачены: {stats.get('paid', 0)}\n"
-        f"🌊 В пути: {stats.get('shipped', 0)}\n"
-        f"📦 Готовы: {stats.get('ready', 0)}\n"
-        f"✅ Получены: {stats.get('delivered', 0)}"
+        f"🦪 Всего заказов: <b>{len(orders)}</b>\n\n"
+        f"⏳ Ожидают оплаты: {pending}\n"
+        f"💎 Оплачены: {paid}\n"
+        f"❌ Отменены: {cancelled}\n"
+        f"↩️ Возврат: {refund}"
     )
     await message.answer(text, parse_mode="HTML")
 
