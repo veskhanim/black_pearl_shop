@@ -220,45 +220,82 @@ async def process_callback(callback: CallbackQuery):
         text = post_data['text']
         p_type = post_data['type']
         result = {}
-        
+        # В начале process_callback, после получения post_data:
+
         if p_type == 'signup_positions':
             parsed = parse_positions_post(text)
+            
+            # Собираем все username
+            all_usernames = set()
+            for pos in parsed['positions']:
+                all_usernames.add(pos['mainBuyer']['username'])
+                for q in pos['queue']:
+                    if q.get('username'):
+                        all_usernames.add(q['username'])
+            
+            # Автодобавляем пользователей в базу
+            print(f"👥 Проверяем {len(all_usernames)} пользователей...")
+            user_map = await ensure_users_in_db(list(all_usernames), session)
+            
             entries = []
             for pos in parsed['positions']:
                 price = find_price_for_position(pos['name'], parsed['priceList'])
+                
+                # Главный покупатель
+                main_username = pos['mainBuyer']['username']
                 entries.append({
-                    'username': pos['mainBuyer']['username'],
-                    'name': pos['mainBuyer']['username'],
+                    'username': main_username,
+                    'name': main_username,
                     'positionNumber': pos['number'],
                     'positionName': pos['name'],
                     'role': 'main',
                     'deadline': pos['mainBuyer'].get('deadline'),
                     'price': price,
-                    'telegramId': None
+                    'telegramId': user_map.get(main_username)  # ← используем из user_map
                 })
+                
+                # Очередь
                 for q in pos['queue']:
-                    entries.append({
-                        'username': q['username'],
-                        'name': q['member'],
-                        'positionNumber': pos['number'],
-                        'positionName': pos['name'],
-                        'role': 'queue',
-                        'deadline': q.get('deadline'),
-                        'price': price,
-                        'telegramId': None
-                    })
+                    q_username = q.get('username')
+                    if q_username:
+                        entries.append({
+                            'username': q_username,
+                            'name': q['member'],
+                            'positionNumber': pos['number'],
+                            'positionName': pos['name'],
+                            'role': 'queue',
+                            'deadline': q.get('deadline'),
+                            'price': price,
+                            'telegramId': user_map.get(q_username)  # ← используем из user_map
+                        })
             
             result = await api_post({
                 'action': 'createOrdersFromPositions',
                 'postTitle': parsed['postTitle'],
-                'hashtag': parsed['hashtag'],
-                'priceList': parsed['priceList'],
+                'hashtag': parsed.get('hashtag'),
+                'priceList': parsed.get('priceList'),
                 'admin': admin['name'],
                 'entries': entries
             })
         
         elif p_type == 'signup':
             parsed = parse_signup_post(text)
+            
+            # Собираем username
+            all_usernames = set()
+            for e in parsed['entries']:
+                if e.get('username'):
+                    all_usernames.add(e['username'])
+            
+            # Автодобавляем
+            print(f" Проверяем {len(all_usernames)} пользователей...")
+            user_map = await ensure_users_in_db(list(all_usernames), session)
+            
+            # Обновляем telegramId в entries
+            for e in parsed['entries']:
+                if e.get('username'):
+                    e['telegramId'] = user_map.get(e['username'])
+            
             result = await api_post({
                 'action': 'createOrdersFromPost',
                 'postTitle': parsed['postTitle'],
@@ -269,12 +306,28 @@ async def process_callback(callback: CallbackQuery):
         
         elif p_type == 'payment':
             parsed = parse_payment_post(text)
+            
+            # Собираем username
+            all_usernames = set()
+            for e in parsed['entries']:
+                if e.get('username'):
+                    all_usernames.add(e['username'])
+            
+            # Автодобавляем
+            print(f"👥 Проверяем {len(all_usernames)} пользователей...")
+            user_map = await ensure_users_in_db(list(all_usernames), session)
+            
+            # Обновляем telegramId
+            for e in parsed['entries']:
+                if e.get('username'):
+                    e['telegramId'] = user_map.get(e['username'])
+            
             result = await api_post({
                 'action': 'createPaymentsFromPost',
                 'admin': admin['name'],
                 'entries': parsed['entries']
             })
-        
+
         # Формируем ответ
         if result.get('success'):
             msg = f"✅ <b>Создано: {result.get('created', 0)}</b>\n"
