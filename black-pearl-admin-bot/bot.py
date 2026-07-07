@@ -13,7 +13,7 @@ from parser import (
     parse_signup_post, 
     parse_payment_post, 
     find_price_for_position,
-    ensure_users_in_db 
+    ensure_users_in_db
 )
 
 load_dotenv()
