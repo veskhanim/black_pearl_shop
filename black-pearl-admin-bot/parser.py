@@ -262,3 +262,19 @@ async def ensure_users_in_db(usernames: list, session):
             user_map[username] = None
     
     return user_map, new_users
+    
+async def is_user_blocked(username: str, session) -> bool:
+    """Проверяет, заблокирован ли пользователь"""
+    if not username:
+        return False
+    
+    try:
+        async with session.post(API_URL, json={
+            'action': 'checkUserByUsername',
+            'username': username
+        }) as resp:
+            result = await resp.json()
+            return result.get('blocked', False)
+    except Exception as e:
+        print(f"❌ Ошибка проверки блокировки @{username}: {e}")
+        return False
