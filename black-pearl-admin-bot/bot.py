@@ -682,7 +682,149 @@ async def cmd_blocked(message: Message):
         await message.answer(text, parse_mode="HTML")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+import time
+from datetime import datetime
+
+# ===== /ping — быстрая проверка =====
+@router.message(Command("ping"))
+async def cmd_ping(message: Message):
+    await message.answer("🏓 Pong! Бот работает.")
+
+# ===== /status — проверка всех сервисов =====
+@router.message(Command("status"))
+async def cmd_status(message: Message):
+    admin = await get_admin(message.from_user.id)
+    if not admin:
+        return await message.answer(" Только для админов")
+    
+    await message.answer("⏳ Проверяю сервисы...")
+    
+    start_time = time.time()
+    results = {}
+    
+    # 1. Проверка Apps Script API
+    try:
+        api_start = time.time()
+        async with session.get(f"{API_URL}?action=test") as resp:
+            api_data = await resp.json()
+        api_time = round((time.time() - api_start) * 1000)
         
+        if api_data.get('success'):
+            results['apps_script'] = {
+                'status': '🟢',
+                'time': f"{api_time} мс",
+                'details': 'API работает'
+            }
+        else:
+            results['apps_script'] = {
+                'status': '',
+                'time': f"{api_time} мс",
+                'details': f"Ответ: {api_data.get('message', 'неизвестно')}"
+            }
+    except Exception as e:
+        results['apps_script'] = {
+            'status': '🔴',
+            'time': '—',
+            'details': str(e)[:50]
+        }
+    
+    # 2. Проверка получения админов
+    try:
+        admins_start = time.time()
+        admins = await get_admins()
+        admins_time = round((time.time() - admins_start) * 1000)
+        
+        results['admins'] = {
+            'status': '🟢' if admins else '🟡',
+            'time': f"{admins_time} мс",
+            'details': f"Админов: {len(admins)}"
+        }
+    except Exception as e:
+        results['admins'] = {
+            'status': '🔴',
+            'time': '—',
+            'details': str(e)[:50]
+        }
+    
+    # 3. Проверка получения заказов
+    try:
+        orders_start = time.time()
+        async with session.get(f"{API_URL}?action=getOrders&userId=all") as resp:
+            orders_data = await resp.json()
+        orders_time = round((time.time() - orders_start) * 1000)
+        
+        orders_count = len(orders_data) if isinstance(orders_data, list) else 0
+        results['orders'] = {
+            'status': '🟢',
+            'time': f"{orders_time} мс",
+            'details': f"Заказов: {orders_count}"
+        }
+    except Exception as e:
+        results['orders'] = {
+            'status': '🔴',
+            'time': '—',
+            'details': str(e)[:50]
+        }
+    
+    # 4. Проверка Telegram Bot API
+    try:
+        me = await bot.get_me()
+        results['telegram'] = {
+            'status': '🟢',
+            'time': '—',
+            'details': f"Бот: @{me.username}"
+        }
+    except Exception as e:
+        results['telegram'] = {
+            'status': '',
+            'time': '—',
+            'details': str(e)[:50]
+        }
+    
+    # 5. Статистика из кэша
+    total_time = round((time.time() - start_time) * 1000)
+    
+    # Формируем ответ
+    text = f"📊 <b>Статус сервисов</b>\n\n"
+    text += f"⏱️ Проверка: {datetime.now().strftime('%H:%M:%S')}\n\n"
+    
+    # Apps Script
+    api = results['apps_script']
+    text += f"{api['status']} <b>Apps Script API</b> — {api['time']}\n"
+    text += f"   {api['details']}\n\n"
+    
+    # Админы
+    adm = results['admins']
+    text += f"{adm['status']} <b>Кэш админов</b> — {adm['time']}\n"
+    text += f"   {adm['details']}\n\n"
+    
+    # Заказы
+    ord = results['orders']
+    text += f"{ord['status']} <b>Заказы</b> — {ord['time']}\n"
+    text += f"   {ord['details']}\n\n"
+    
+    # Telegram
+    tg = results['telegram']
+    text += f"{tg['status']} <b>Telegram Bot</b>\n"
+    text += f"   {tg['details']}\n\n"
+    
+    # Итого
+    text += f"{'─' * 20}\n"
+    text += f"⚡ <b>Общее время:</b> {total_time} мс\n"
+    
+    # Определяем общий статус
+    has_red = any(r['status'] == '🔴' for r in results.values())
+    has_yellow = any(r['status'] == '' for r in results.values())
+    
+    if has_red:
+        text += f"🔴 <b>Есть проблемы!</b>"
+    elif has_yellow:
+        text += f"🟡 <b>Внимание</b>"
+    else:
+        text += f"🟢 <b>Всё работает</b>"
+    
+    await message.answer(text, parse_mode="HTML")
 # ===== ЗАПУСК =====
 async def main():
     global session
