@@ -100,14 +100,17 @@ async def cmd_start(message: Message):
         return await message.answer("🖤 <b>BLACK PEARL</b>\n\n⛔ У тебя нет доступа.", parse_mode="HTML")
     
     text = (
-        f"🖤 <b>BLACK PEARL — Admin Panel</b>\n\n"
+        f" <b>BLACK PEARL — Admin Panel</b>\n\n"
         f"👋 Привет, <b>{admin['name']}</b>!\n"
         f"🎭 Роль: <b>{admin['role']}</b>\n\n"
         f"📋 <b>Команды:</b>\n"
         f"/orders — активные заказы\n"
         f"/create — создать заказ вручную\n"
         f"/stats — статистика\n"
-        f"/theme [название] — сменить тему\n\n"
+        f"/theme [название] — сменить тему\n"
+        f"/block username причина — заблокировать 🔒\n"
+        f"/unblock username — разблокировать 🔓\n"
+        f"/blocked — список заблокированных\n\n"
         f"📝 <b>Парсинг:</b> просто отправь текст поста!"
     )
     await message.answer(text, parse_mode="HTML")
