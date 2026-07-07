@@ -1,4 +1,7 @@
 import re
+import aiohttp
+import os
+API_URL = os.getenv('APPS_SCRIPT_URL')
 
 def detect_post_type(text: str) -> str:
     if re.search(r'@\w+\s*[-—]\s*\d+', text) and not re.search(r'^\d+\.\s+.+@', text, re.MULTILINE):
@@ -102,7 +105,7 @@ def find_price_for_position(position_name: str, price_list: dict) -> int:
             return val['price']
     return 0
     
-async def ensure_users_in_db(usernames: list, session: aiohttp.ClientSession):
+async def ensure_users_in_db(usernames: list, session):
     """
     Проверяет всех пользователей в базе и создаёт отсутствующих.
     Возвращает словарь {username: telegram_id}
