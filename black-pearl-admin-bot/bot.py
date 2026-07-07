@@ -435,8 +435,8 @@ async def process_callback(callback: CallbackQuery):
 
 # ===== /orders =====
 @router.message(Command("orders"))
-async def cmd_orders(message: Message):
-    admin = await get_admin(message.from_user.id)
+async def cmd_orders(message: Message, session: aiohttp.ClientSession):
+    admin = await get_admin(message.from_user.id, session)
     if not admin:
         return
     
@@ -444,7 +444,8 @@ async def cmd_orders(message: Message):
     if not isinstance(orders, list):
         return await message.answer(f"❌ Ошибка: {orders}")
     
-    active = [o for o in orders if o.get('status') != 'delivered']
+    # Показываем только не полученные заказы
+    active = [o for o in orders if o.get('status') != 'Получен']
     if not active:
         return await message.answer("✅ Нет активных заказов")
     
@@ -452,8 +453,8 @@ async def cmd_orders(message: Message):
     for o in active[:15]:
         text += f"🦪 <b>{o.get('order_id')}</b>\n"
         text += f"├ {o.get('status')}\n"
-        text += f"├ 💎 {o.get('total', 0)} ₽\n"
-        text += f"└ 👤 @{o.get('username')}\n\n"
+        text += f"├  {o.get('total', 0)} ₽\n"
+        text += f"└ 👤 {o.get('telegram_id')}\n\n"
     
     await message.answer(text, parse_mode="HTML")
 
