@@ -100,12 +100,12 @@ def parse_positions_post(text: str) -> dict:
 def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     """
     Парсит пост записи с очередями.
-    admins_by_icon: словарь {icon: {name, telegram_id}} для поиска админов по иконкам.
+    Поддерживает цену в рублях (₽) и долларах ($).
     """
     if admins_by_icon is None:
         admins_by_icon = {}
     
-    result = {'postTitle': None, 'price': None, 'entries': []}
+    result = {'postTitle': None, 'price': None, 'currency': 'RUB', 'entries': []}
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
     if not lines:
@@ -113,12 +113,21 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     
     result['postTitle'] = lines[0]
     
-    # Цена: число перед ₽
-    price_match = re.search(r'(\d[\d\s]*?)\s*₽', text)
-    if price_match:
-        price_str = price_match.group(1).replace(' ', '')
+    # Цена в рублях: число перед ₽
+    price_rub_match = re.search(r'(\d[\d\s]*?)\s*₽', text)
+    if price_rub_match:
+        price_str = price_rub_match.group(1).replace(' ', '')
         if price_str:
             result['price'] = int(price_str)
+            result['currency'] = 'RUB'
+    else:
+        # Цена в долларах: число перед $ или "X$"
+        price_usd_match = re.search(r'(\d[\d\s]*?)\s*\$', text)
+        if price_usd_match:
+            price_str = price_usd_match.group(1).replace(' ', '')
+            if price_str:
+                result['price'] = int(price_str)
+                result['currency'] = 'USD'
     
     # Разбиваем на очереди
     queues = []
@@ -167,7 +176,6 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
                 name = m2.group(1)
                 rest = m2.group(2).strip()
                 
-                # Проверяем, есть ли эмодзи
                 emojis = emoji_pattern.findall(rest)
                 if emojis:
                     icon = emojis[0]
