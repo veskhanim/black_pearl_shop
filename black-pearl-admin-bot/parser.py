@@ -1,19 +1,102 @@
 import re
-import aiohttp
 import os
+
 API_URL = os.getenv('APPS_SCRIPT_URL')
 
-# ===== ФУНКЦИИ ПАРСИНГА (без изменений) =====
-
+# ===== ОПРЕДЕЛЕНИЕ ТИПА ПОСТА =====
 def detect_post_type(text: str) -> str:
-    if re.search(r'@\w+\s*[-—]\s*\d+', text) and not re.search(r'^\d+\.\s+.+@', text, re.MULTILINE):
+    """Определяет тип поста: signup_positions, signup, payment или unknown"""
+    # Пост оплаты: @user - сумма (но нет очередей и позиций)
+    if re.search(r'@\w+\s*[-—]\s*\d+', text) and not re.search(r'^\d+\.\s+.+@', text, re.MULTILINE) and not re.search(r'очередь', text, re.IGNORECASE):
         return 'payment'
+    
+    # Пост с позициями: "1. Название @user"
     if re.search(r'^\d+\.\s+.+?@', text, re.MULTILINE):
         return 'signup_positions'
-    if (re.search(r'очередь', text, re.IGNORECASE) or re.search(r'по\s+\d+\s*₽', text, re.IGNORECASE)) and re.search(r'@\w+', text):
+    
+    # Пост записи с очередями
+    has_queues = bool(re.search(r'очередь', text, re.IGNORECASE))
+    has_price = bool(re.search(r'\d[\d\s]*\s*₽', text, re.IGNORECASE))
+    has_usernames = bool(re.search(r'@\w+', text))
+    
+    if (has_queues or has_price) and has_usernames:
         return 'signup'
+    
     return 'unknown'
 
+# ===== ПАТТЕРН ЭМОДЗИ =====
+emoji_pattern = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\U0001f926-\U0001f937"
+    "\U00010000-\U0010ffff"
+    "]+", 
+    flags=re.UNICODE
+)
+
+# ===== ПАРСИНГ ПОСТА С ПОЗИЦИЯМИ =====
+def parse_positions_post(text: str) -> dict:
+    result = {'postTitle': None, 'hashtag': None, 'priceList': {}, 'positions': []}
+    lines = [l.strip() for l in text.split('\n')]
+    
+    result['postTitle'] = next((l for l in lines if l), 'Без названия')
+    
+    hashtag_match = re.search(r'#([a-zA-Z0-9_а-яА-Я]+)', text)
+    if hashtag_match:
+        result['hashtag'] = '#' + hashtag_match.group(1)
+    
+    # Справочник цен
+    first_pos_idx = next((i for i, l in enumerate(lines) if re.match(r'^\d+\.\s+', l)), len(lines))
+    for line in lines[:first_pos_idx]:
+        match = re.match(r'^(.+?)\s+(?:по\s+)?(\d[\d\s]*)\s*(?:₽|руб|rub|сум)', line, re.IGNORECASE)
+        if match:
+            name = match.group(1).strip().rstrip('!,').strip()
+            price = int(match.group(2).replace(' ', ''))
+            if name and price:
+                result['priceList'][name.lower()] = {'name': match.group(1).strip(), 'price': price}
+    
+    # Разбивка на блоки позиций
+    blocks = []
+    current_block = None
+    for line in lines:
+        pos_match = re.match(r'^(\d+)\.\s+(.+?)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', line)
+        if pos_match:
+            if current_block: blocks.append(current_block)
+            current_block = {
+                'positionNum': int(pos_match.group(1)),
+                'positionName': pos_match.group(2).strip(),
+                'mainBuyer': pos_match.group(3),
+                'mainDeadline': pos_match.group(4),
+                'queueLines': []
+            }
+        elif current_block:
+            current_block['queueLines'].append(line)
+    if current_block: blocks.append(current_block)
+    
+    # Парсинг очередей
+    for block in blocks:
+        position = {
+            'number': block['positionNum'],
+            'name': block['positionName'],
+            'mainBuyer': {'username': block['mainBuyer'], 'deadline': block['mainDeadline']},
+            'queue': []
+        }
+        for line in block['queueLines']:
+            clean = line.strip()
+            if not clean or re.match(r'^очередь', clean, re.IGNORECASE): continue
+            m = re.match(r'^([а-яА-Яa-zA-ZёЁ]+)\s*:\s*@?([a-zA-Z0-9_]+)?(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', clean)
+            if m and m.group(2):
+                position['queue'].append({'member': m.group(1), 'username': m.group(2), 'deadline': m.group(3)})
+        result['positions'].append(position)
+        
+    return result
+
+# ===== ПАРСИНГ ПОСТА ЗАПИСИ (с поддержкой эмодзи-админов) =====
 def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     """
     Парсит пост записи с очередями.
@@ -28,7 +111,6 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     if not lines:
         return result
     
-    # Заголовок
     result['postTitle'] = lines[0]
     
     # Цена: число перед ₽
@@ -60,20 +142,6 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     if current_queue is not None and current_lines:
         queues.append({'number': current_queue, 'lines': current_lines})
     
-    # Паттерн для извлечения эмодзи (любой эмодзи в конце строки)
-    emoji_pattern = re.compile(
-        "[\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"  # symbols & pictographs
-        "\U0001F680-\U0001F6FF"  # transport & map
-        "\U0001F1E0-\U0001F1FF"  # flags
-        "\U00002702-\U000027B0"
-        "\U000024C2-\U0001F251"
-        "\U0001f926-\U0001f937"
-        "\U00010000-\U0010ffff"
-        "]+", 
-        flags=re.UNICODE
-    )
-    
     # Парсим записи
     for queue in queues:
         for line in queue['lines']:
@@ -93,24 +161,22 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
                 })
                 continue
             
-            # Паттерн 2: "Имя" + эмодзи (слот админа)
+            # Паттерн 2: "Имя" + что-то (эмодзи или свободный слот)
             m2 = re.match(r'^([А-Яа-яA-Za-zёЁ]+)\s+(.+)$', line)
             if m2:
                 name = m2.group(1)
                 rest = m2.group(2).strip()
                 
-                # Проверяем, есть ли эмодзи в rest
+                # Проверяем, есть ли эмодзи
                 emojis = emoji_pattern.findall(rest)
                 if emojis:
-                    icon = emojis[0]  # берём первый эмодзи
-                    
-                    # Ищем админа по иконке
+                    icon = emojis[0]
                     if icon in admins_by_icon:
                         admin = admins_by_icon[icon]
-                        print(f"🎭 Слот админа: {name} {icon} → @{admin['name']}")
+                        print(f"🎭 Слот админа: {name} {icon} → {admin['name']}")
                         result['entries'].append({
                             'name': name,
-                            'username': admin['name'],  # имя админа как username
+                            'username': admin['name'],
                             'telegramId': admin['telegram_id'],
                             'deadline': None,
                             'queue': queue['number'],
@@ -118,9 +184,8 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
                             'icon': icon
                         })
                     else:
-                        print(f"⏭️ Неизвестный эмодзи {icon} для {name} — пропускаем")
+                        print(f"️ Неизвестный эмодзи {icon} для {name} — пропускаем")
                 else:
-                    # Просто имя без username и без эмодзи — пропускаем
                     print(f"⏭️ Свободный слот в очереди {queue['number']}: {name}")
                 continue
             
@@ -132,77 +197,7 @@ def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
     
     return result
 
-def parse_signup_post(text: str) -> dict:
-    """
-    Парсит пост записи с очередями.
-    Цена — первое число, за которым идёт знак ₽.
-    """
-    result = {'postTitle': None, 'price': None, 'entries': []}
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    
-    if not lines:
-        return result
-    
-    # Заголовок — первая непустая строка
-    result['postTitle'] = lines[0]
-    
-    # Цена: ищем число, за которым идёт ₽ (с пробелом или без)
-    # Паттерн: число (возможно с пробелами-разделителями тысяч) + ₽
-    price_match = re.search(r'(\d[\d\s]*?)\s*₽', text)
-    if price_match:
-        price_str = price_match.group(1).replace(' ', '')
-        if price_str:
-            result['price'] = int(price_str)
-    
-    # Разбиваем на очереди
-    queues = []
-    current_queue = None
-    current_lines = []
-    
-    for line in lines:
-        queue_match = re.match(r'^(\d+)\s+очередь', line, re.IGNORECASE)
-        if queue_match:
-            if current_queue is not None and current_lines:
-                queues.append({'number': current_queue, 'lines': current_lines})
-            current_queue = int(queue_match.group(1))
-            current_lines = []
-        elif current_queue is not None:
-            current_lines.append(line)
-        else:
-            if current_queue is None:
-                current_queue = 1
-                current_lines.append(line)
-    
-    if current_queue is not None and current_lines:
-        queues.append({'number': current_queue, 'lines': current_lines})
-    
-    # Парсим записи в каждой очереди
-    for queue in queues:
-        for line in queue['lines']:
-            # Паттерн 1: "Имя @username //дата"
-            m = re.match(
-                r'^([А-Яа-яA-Za-zёЁ]+)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', 
-                line
-            )
-            if m:
-                result['entries'].append({
-                    'name': m.group(1),
-                    'username': m.group(2),
-                    'deadline': m.group(3),
-                    'queue': queue['number'],
-                    'telegramId': None
-                })
-                continue
-            
-            # Паттерн 2: свободный слот (без username) — пропускаем 
-            # TODO Админы тоже должны писать свои ники или потом подставлять их из базы
-            m2 = re.match(r'^([А-Яа-яA-Za-zёЁ]+)\s*(?:[🥰💖❤️🔥✨🌸]|\s)*$', line)
-            if m2:
-                print(f"⏭️ Занято админом в очереди {queue['number']}: {m2.group(1)}")
-                continue
-    
-    return result
-
+# ===== ПАРСИНГ ПОСТА ОПЛАТЫ =====
 def parse_payment_post(text: str) -> dict:
     entries = []
     for m in re.finditer(r'@([a-zA-Z0-9_]+)\s*[-—]\s*([\d\s]+)\s*(?:₽|руб|rub|сум)?(?:\s*\/\/\s*(\d{2}\.\d{2}))?', text):
@@ -214,6 +209,7 @@ def parse_payment_post(text: str) -> dict:
         })
     return {'entries': entries}
 
+# ===== ПОИСК ЦЕНЫ ПО НАЗВАНИЮ ПОЗИЦИИ =====
 def find_price_for_position(position_name: str, price_list: dict) -> int:
     exact = price_list.get(position_name.lower())
     if exact: return exact['price']
@@ -222,11 +218,11 @@ def find_price_for_position(position_name: str, price_list: dict) -> int:
             return val['price']
     return 0
 
-# ===== НОВАЯ ФУНКЦИЯ: АВТОДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
+# ===== АВТОДОБАВЛЕНИЕ ПОЛЬЗОВАТЕЛЕЙ =====
 async def ensure_users_in_db(usernames: list, session):
     """
     Проверяет пользователей и создаёт отсутствующих.
-    Возвращает (user_map, new_users) — словарь и список новых.
+    Возвращает (user_map, new_users)
     """
     user_map = {}
     new_users = []
