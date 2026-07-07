@@ -194,7 +194,7 @@ async def show_preview(chat_id: int, admin: dict, post_type: str, text: str):
 async def process_callback(callback: CallbackQuery):
     admin = await get_admin(callback.from_user.id)
     if not admin:
-        await callback.answer("⛔ Нет прав", show_alert=True)
+        await callback.answer(" Нет прав", show_alert=True)
         return
     
     parts = callback.data.split(":", 1)
@@ -219,12 +219,15 @@ async def process_callback(callback: CallbackQuery):
     
     await callback.answer("⏳ Создаю...")
     
+    # Показываем прогресс
+    await callback.message.edit_text("⏳ <b>Создаю записи...</b>\n\nЭто займёт до 30 секунд \n\n📝 Обрабатываю пост...", parse_mode="HTML")
+    
     try:
         text = post_data['text']
         p_type = post_data['type']
         result = {}
-        # В начале process_callback, после получения post_data:
-
+        new_users = []  # список новых пользователей
+        
         if p_type == 'signup_positions':
             parsed = parse_positions_post(text)
             
@@ -236,15 +239,22 @@ async def process_callback(callback: CallbackQuery):
                     if q.get('username'):
                         all_usernames.add(q['username'])
             
-            # Автодобавляем пользователей в базу
+            # Автодобавляем пользователей
             print(f"👥 Проверяем {len(all_usernames)} пользователей...")
-            user_map = await ensure_users_in_db(list(all_usernames), session)
+            user_map, new_users = await ensure_users_in_db(list(all_usernames), session)
+            
+            # Обновляем сообщение с прогрессом
+            progress_text = f"⏳ <b>Создаю записи...</b>\n\n"
+            progress_text += f"👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
+            if new_users:
+                progress_text += f"🆕 Новых: <b>{len(new_users)}</b>\n"
+            progress_text += f"\n📝 Создаю заказы..."
+            await callback.message.edit_text(progress_text, parse_mode="HTML")
             
             entries = []
             for pos in parsed['positions']:
                 price = find_price_for_position(pos['name'], parsed['priceList'])
                 
-                # Главный покупатель
                 main_username = pos['mainBuyer']['username']
                 entries.append({
                     'username': main_username,
@@ -254,10 +264,9 @@ async def process_callback(callback: CallbackQuery):
                     'role': 'main',
                     'deadline': pos['mainBuyer'].get('deadline'),
                     'price': price,
-                    'telegramId': user_map.get(main_username)  # ← используем из user_map
+                    'telegramId': user_map.get(main_username)
                 })
                 
-                # Очередь
                 for q in pos['queue']:
                     q_username = q.get('username')
                     if q_username:
@@ -269,7 +278,7 @@ async def process_callback(callback: CallbackQuery):
                             'role': 'queue',
                             'deadline': q.get('deadline'),
                             'price': price,
-                            'telegramId': user_map.get(q_username)  # ← используем из user_map
+                            'telegramId': user_map.get(q_username)
                         })
             
             result = await api_post({
@@ -284,17 +293,21 @@ async def process_callback(callback: CallbackQuery):
         elif p_type == 'signup':
             parsed = parse_signup_post(text)
             
-            # Собираем username
             all_usernames = set()
             for e in parsed['entries']:
                 if e.get('username'):
                     all_usernames.add(e['username'])
             
-            # Автодобавляем
             print(f" Проверяем {len(all_usernames)} пользователей...")
-            user_map = await ensure_users_in_db(list(all_usernames), session)
+            user_map, new_users = await ensure_users_in_db(list(all_usernames), session)
             
-            # Обновляем telegramId в entries
+            progress_text = f"⏳ <b>Создаю записи...</b>\n\n"
+            progress_text += f"👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
+            if new_users:
+                progress_text += f"🆕 Новых: <b>{len(new_users)}</b>\n"
+            progress_text += f"\n Создаю заказы..."
+            await callback.message.edit_text(progress_text, parse_mode="HTML")
+            
             for e in parsed['entries']:
                 if e.get('username'):
                     e['telegramId'] = user_map.get(e['username'])
@@ -310,17 +323,21 @@ async def process_callback(callback: CallbackQuery):
         elif p_type == 'payment':
             parsed = parse_payment_post(text)
             
-            # Собираем username
             all_usernames = set()
             for e in parsed['entries']:
                 if e.get('username'):
                     all_usernames.add(e['username'])
             
-            # Автодобавляем
             print(f"👥 Проверяем {len(all_usernames)} пользователей...")
-            user_map = await ensure_users_in_db(list(all_usernames), session)
+            user_map, new_users = await ensure_users_in_db(list(all_usernames), session)
             
-            # Обновляем telegramId
+            progress_text = f" <b>Создаю записи...</b>\n\n"
+            progress_text += f"👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
+            if new_users:
+                progress_text += f"🆕 Новых: <b>{len(new_users)}</b>\n"
+            progress_text += f"\n Создаю оплаты..."
+            await callback.message.edit_text(progress_text, parse_mode="HTML")
+            
             for e in parsed['entries']:
                 if e.get('username'):
                     e['telegramId'] = user_map.get(e['username'])
@@ -330,29 +347,47 @@ async def process_callback(callback: CallbackQuery):
                 'admin': admin['name'],
                 'entries': parsed['entries']
             })
-
-        # Формируем ответ
+        
+        # Формируем финальное сообщение
         if result.get('success'):
             msg = f"✅ <b>Создано: {result.get('created', 0)}</b>\n"
             if result.get('skipped'):
-                msg += f"⏭️ <b>Пропущено: {result['skipped']}</b>\n"
+                msg += f"️ <b>Пропущено: {result['skipped']}</b>\n"
+            
+            # Показываем новых пользователей
+            if new_users:
+                msg += f"\n <b>Новых пользователей: {len(new_users)}</b>\n"
+                for u in new_users[:10]:  # показываем первые 10
+                    msg += f"  • @{u}\n"
+                if len(new_users) > 10:
+                    msg += f"  ... и ещё {len(new_users) - 10}\n"
+            
             msg += "\n"
             
+            # Список заказов с пометкой новых пользователей
             for o in result.get('orders', []):
+                username = o.get('username', '')
+                is_new = username in new_users
+                marker = " 🆕" if is_new else ""
+                
                 if o.get('skipped'):
-                    msg += f"⏭️ {o.get('name') or o.get('username')} — {o.get('reason')}\n"
+                    msg += f"️ {o.get('name') or username} — {o.get('reason')}{marker}\n"
                 else:
                     icon = "👑" if o.get('role') == 'main' else "🔢"
-                    msg += f"{icon} <code>{o.get('orderId')}</code> @{o.get('username', '')}"
+                    msg += f"{icon} <code>{o.get('orderId')}</code> @{username}{marker}"
                     if o.get('deadline'):
                         msg += f" ⏰ {o['deadline']}"
                     msg += f" • 💎 {o.get('total', 0)} ₽\n"
             
             for r in result.get('results', []):
+                username = r.get('username', '')
+                is_new = username in new_users
+                marker = " 🆕" if is_new else ""
+                
                 if r.get('skipped'):
-                    msg += f"⏭️ @{r.get('username')} — {r.get('reason')}\n"
+                    msg += f"⏭️ @{username} — {r.get('reason')}{marker}\n"
                 else:
-                    msg += f"🦪 <code>{r.get('orderId')}</code> → @{r.get('username')} • 💎 {r.get('amount', 0)} ₽\n"
+                    msg += f"🦪 <code>{r.get('orderId')}</code> → @{username}{marker} •  {r.get('amount', 0)} ₽\n"
             
             if result.get('errors'):
                 msg += f"\n⚠️ <b>Ошибки ({len(result['errors'])}):</b>\n"
