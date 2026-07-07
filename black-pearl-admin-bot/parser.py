@@ -14,57 +14,122 @@ def detect_post_type(text: str) -> str:
         return 'signup'
     return 'unknown'
 
-def parse_positions_post(text: str) -> dict:
-    result = {'postTitle': None, 'hashtag': None, 'priceList': {}, 'positions': []}
-    lines = [l.strip() for l in text.split('\n')]
+def parse_signup_post(text: str, admins_by_icon: dict = None) -> dict:
+    """
+    Парсит пост записи с очередями.
+    admins_by_icon: словарь {icon: {name, telegram_id}} для поиска админов по иконкам.
+    """
+    if admins_by_icon is None:
+        admins_by_icon = {}
     
-    result['postTitle'] = next((l for l in lines if l), 'Без названия')
+    result = {'postTitle': None, 'price': None, 'entries': []}
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    hashtag_match = re.search(r'#([a-zA-Z0-9_а-яА-Я]+)', text)
-    if hashtag_match:
-        result['hashtag'] = '#' + hashtag_match.group(1)
+    if not lines:
+        return result
     
-    first_pos_idx = next((i for i, l in enumerate(lines) if re.match(r'^\d+\.\s+', l)), len(lines))
-    for line in lines[:first_pos_idx]:
-        match = re.match(r'^(.+?)\s+(?:по\s+)?(\d[\d\s]*)\s*(?:₽|руб|rub|сум)', line, re.IGNORECASE)
-        if match:
-            name = match.group(1).strip().rstrip('!,').strip()
-            price = int(match.group(2).replace(' ', ''))
-            if name and price:
-                result['priceList'][name.lower()] = {'name': match.group(1).strip(), 'price': price}
+    # Заголовок
+    result['postTitle'] = lines[0]
     
-    blocks = []
-    current_block = None
+    # Цена: число перед ₽
+    price_match = re.search(r'(\d[\d\s]*?)\s*₽', text)
+    if price_match:
+        price_str = price_match.group(1).replace(' ', '')
+        if price_str:
+            result['price'] = int(price_str)
+    
+    # Разбиваем на очереди
+    queues = []
+    current_queue = None
+    current_lines = []
+    
     for line in lines:
-        pos_match = re.match(r'^(\d+)\.\s+(.+?)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', line)
-        if pos_match:
-            if current_block: blocks.append(current_block)
-            current_block = {
-                'positionNum': int(pos_match.group(1)),
-                'positionName': pos_match.group(2).strip(),
-                'mainBuyer': pos_match.group(3),
-                'mainDeadline': pos_match.group(4),
-                'queueLines': []
-            }
-        elif current_block:
-            current_block['queueLines'].append(line)
-    if current_block: blocks.append(current_block)
+        queue_match = re.match(r'^(\d+)\s+очередь', line, re.IGNORECASE)
+        if queue_match:
+            if current_queue is not None and current_lines:
+                queues.append({'number': current_queue, 'lines': current_lines})
+            current_queue = int(queue_match.group(1))
+            current_lines = []
+        elif current_queue is not None:
+            current_lines.append(line)
+        else:
+            if current_queue is None:
+                current_queue = 1
+                current_lines.append(line)
     
-    for block in blocks:
-        position = {
-            'number': block['positionNum'],
-            'name': block['positionName'],
-            'mainBuyer': {'username': block['mainBuyer'], 'deadline': block['mainDeadline']},
-            'queue': []
-        }
-        for line in block['queueLines']:
-            clean = line.strip()
-            if not clean or re.match(r'^очередь', clean, re.IGNORECASE): continue
-            m = re.match(r'^([а-яА-Яa-zA-ZёЁ]+)\s*:\s*@?([a-zA-Z0-9_]+)?(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', clean)
-            if m and m.group(2):
-                position['queue'].append({'member': m.group(1), 'username': m.group(2), 'deadline': m.group(3)})
-        result['positions'].append(position)
-        
+    if current_queue is not None and current_lines:
+        queues.append({'number': current_queue, 'lines': current_lines})
+    
+    # Паттерн для извлечения эмодзи (любой эмодзи в конце строки)
+    emoji_pattern = re.compile(
+        "[\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "\U0001f926-\U0001f937"
+        "\U00010000-\U0010ffff"
+        "]+", 
+        flags=re.UNICODE
+    )
+    
+    # Парсим записи
+    for queue in queues:
+        for line in queue['lines']:
+            # Паттерн 1: "Имя @username //дата"
+            m = re.match(
+                r'^([А-Яа-яA-Za-zёЁ]+)\s+@([a-zA-Z0-9_]+)(?:\s*\/\/\s*(\d{2}\.\d{2}))?\s*$', 
+                line
+            )
+            if m:
+                result['entries'].append({
+                    'name': m.group(1),
+                    'username': m.group(2),
+                    'deadline': m.group(3),
+                    'queue': queue['number'],
+                    'telegramId': None,
+                    'role': 'client'
+                })
+                continue
+            
+            # Паттерн 2: "Имя" + эмодзи (слот админа)
+            m2 = re.match(r'^([А-Яа-яA-Za-zёЁ]+)\s+(.+)$', line)
+            if m2:
+                name = m2.group(1)
+                rest = m2.group(2).strip()
+                
+                # Проверяем, есть ли эмодзи в rest
+                emojis = emoji_pattern.findall(rest)
+                if emojis:
+                    icon = emojis[0]  # берём первый эмодзи
+                    
+                    # Ищем админа по иконке
+                    if icon in admins_by_icon:
+                        admin = admins_by_icon[icon]
+                        print(f"🎭 Слот админа: {name} {icon} → @{admin['name']}")
+                        result['entries'].append({
+                            'name': name,
+                            'username': admin['name'],  # имя админа как username
+                            'telegramId': admin['telegram_id'],
+                            'deadline': None,
+                            'queue': queue['number'],
+                            'role': 'admin',
+                            'icon': icon
+                        })
+                    else:
+                        print(f"⏭️ Неизвестный эмодзи {icon} для {name} — пропускаем")
+                else:
+                    # Просто имя без username и без эмодзи — пропускаем
+                    print(f"⏭️ Свободный слот в очереди {queue['number']}: {name}")
+                continue
+            
+            # Паттерн 3: просто имя без всего
+            m3 = re.match(r'^([А-Яа-яA-Za-zёЁ]+)\s*$', line)
+            if m3:
+                print(f"⏭️ Свободный слот в очереди {queue['number']}: {m3.group(1)}")
+                continue
+    
     return result
 
 def parse_signup_post(text: str) -> dict:
