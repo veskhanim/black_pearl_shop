@@ -293,24 +293,32 @@ async def process_callback(callback: CallbackQuery):
         elif p_type == 'signup':
             parsed = parse_signup_post(text)
             
+            # Загружаем админов с иконками
+            admins_by_icon = await get_admins_with_icons()
+            parsed = parse_signup_post(text, admins_by_icon)
+            
             all_usernames = set()
             for e in parsed['entries']:
                 if e.get('username'):
                     all_usernames.add(e['username'])
             
-            print(f" Проверяем {len(all_usernames)} пользователей...")
+            print(f"👥 Проверяем {len(all_usernames)} пользователей...")
             user_map, new_users = await ensure_users_in_db(list(all_usernames), session)
             
             progress_text = f"⏳ <b>Создаю записи...</b>\n\n"
             progress_text += f"👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
             if new_users:
                 progress_text += f"🆕 Новых: <b>{len(new_users)}</b>\n"
-            progress_text += f"\n Создаю заказы..."
+            progress_text += f"\n📝 Создаю заказы..."
             await callback.message.edit_text(progress_text, parse_mode="HTML")
             
             for e in parsed['entries']:
                 if e.get('username'):
-                    e['telegramId'] = user_map.get(e['username'])
+                    # Если это админ — используем его telegram_id напрямую
+                    if e.get('role') == 'admin':
+                        e['telegramId'] = e.get('telegramId') or user_map.get(e['username'])
+                    else:
+                        e['telegramId'] = user_map.get(e['username'])
             
             result = await api_post({
                 'action': 'createOrdersFromPost',
@@ -364,14 +372,22 @@ async def process_callback(callback: CallbackQuery):
             
             msg += "\n"
             
-            # Список заказов с пометкой новых пользователей
+            # Список заказов с пометкой ролей
             for o in result.get('orders', []):
                 username = o.get('username', '')
                 is_new = username in new_users
-                marker = " 🆕" if is_new else ""
+                role = o.get('role', '')
+                
+                # Определяем маркер
+                if role == 'admin':
+                    marker = " 🎭"  # админ
+                elif is_new:
+                    marker = " 🆕"  # новый пользователь
+                else:
+                    marker = ""
                 
                 if o.get('skipped'):
-                    msg += f"️ {o.get('name') or username} — {o.get('reason')}{marker}\n"
+                    msg += f"⏭️ {o.get('name') or username} — {o.get('reason')}{marker}\n"
                 else:
                     icon = "👑" if o.get('role') == 'main' else "🔢"
                     msg += f"{icon} <code>{o.get('orderId')}</code> @{username}{marker}"
@@ -445,6 +461,36 @@ async def cmd_stats(message: Message):
         f"✅ Получены: {stats.get('delivered', 0)}"
     )
     await message.answer(text, parse_mode="HTML")
+
+# Кэш админов с иконками
+admins_icons_cache = {}
+admins_icons_time = 0
+
+async def get_admins_with_icons():
+    """Загружает словарь {icon: {name, telegram_id}}"""
+    global admins_icons_cache, admins_icons_time
+    
+    if admins_icons_cache and time.time() - admins_icons_time < 60:
+        return admins_icons_cache
+    
+    try:
+        async with session.get(f"{API_URL}?action=getAdminsWithIcons") as resp:
+            data = await resp.json()
+            if isinstance(data, list):
+                admins_icons_cache = {
+                    a['icon']: {
+                        'name': a['name'],
+                        'telegram_id': a['telegram_id']
+                    }
+                    for a in data if a.get('icon')
+                }
+                admins_icons_time = time.time()
+                print(f"🎭 Загружено {len(admins_icons_cache)} админов с иконками")
+                return admins_icons_cache
+    except Exception as e:
+        print(f"❌ Ошибка getAdminsWithIcons: {e}")
+    
+    return {}
     
 # ===== /theme =====
 @router.message(Command("theme"))
