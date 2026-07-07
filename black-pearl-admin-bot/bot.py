@@ -291,8 +291,6 @@ async def process_callback(callback: CallbackQuery):
             })
         
         elif p_type == 'signup':
-            parsed = parse_signup_post(text)
-            
             # Загружаем админов с иконками
             admins_by_icon = await get_admins_with_icons()
             parsed = parse_signup_post(text, admins_by_icon)
@@ -305,8 +303,22 @@ async def process_callback(callback: CallbackQuery):
             print(f"👥 Проверяем {len(all_usernames)} пользователей...")
             user_map, new_users = await ensure_users_in_db(list(all_usernames), session)
             
+            # Показываем прогресс с конвертацией
+            currency_symbol = '$' if parsed.get('currency') == 'USD' else '₽'
+            price_display = f"{parsed.get('price', 0)}{currency_symbol}"
+            
             progress_text = f"⏳ <b>Создаю записи...</b>\n\n"
-            progress_text += f"👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
+            progress_text += f"💎 Цена: <b>{price_display}</b>\n"
+            if parsed.get('currency') == 'USD':
+                # Получаем курс
+                try:
+                    rate_data = await api_get('getUsdRate')
+                    usd_rate = rate_data.get('rate', 90)
+                    rub_price = parsed.get('price', 0) * usd_rate
+                    progress_text += f"💱 Курс: {usd_rate}₽/$ → <b>{rub_price}₽</b>\n"
+                except:
+                    pass
+            progress_text += f"\n👥 Найдено пользователей: <b>{len(all_usernames)}</b>\n"
             if new_users:
                 progress_text += f"🆕 Новых: <b>{len(new_users)}</b>\n"
             progress_text += f"\n📝 Создаю заказы..."
@@ -314,7 +326,6 @@ async def process_callback(callback: CallbackQuery):
             
             for e in parsed['entries']:
                 if e.get('username'):
-                    # Если это админ — используем его telegram_id напрямую
                     if e.get('role') == 'admin':
                         e['telegramId'] = e.get('telegramId') or user_map.get(e['username'])
                     else:
@@ -324,9 +335,10 @@ async def process_callback(callback: CallbackQuery):
                 'action': 'createOrdersFromPost',
                 'postTitle': parsed['postTitle'],
                 'price': parsed.get('price'),
+                'currency': parsed.get('currency', 'RUB'),  # ← Передаём валюту
                 'admin': admin['name'],
                 'entries': parsed['entries']
-            })
+            })    
         
         elif p_type == 'payment':
             parsed = parse_payment_post(text)
