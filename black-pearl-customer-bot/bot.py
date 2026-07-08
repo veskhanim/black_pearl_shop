@@ -7,6 +7,9 @@ from aiogram.filters import Command
 from aiogram.types import Message, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 
 load_dotenv()
+
+# ID канала для уведомлений (обязательно!)
+NOTIFICATION_CHANNEL_ID = os.getenv('NOTIFICATION_CHANNEL_ID')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 API_URL = os.getenv('APPS_SCRIPT_URL')
 MINI_APP_URL = os.getenv('MINI_APP_URL', '')
@@ -122,16 +125,12 @@ async def my_boxes(message: Message):
 
 # ===== УВЕДОМЛЕНИЕ О НОВОМ ПОЛЬЗОВАТЕЛЕ =====
 async def notify_new_user(user_id: int, username: str, first_name: str, last_name: str, session: aiohttp.ClientSession):
-    """Отправляет уведомление всем админам о новом пользователе"""
+    """Отправляет уведомление в канал о новом пользователе"""
+    if not NOTIFICATION_CHANNEL_ID:
+        print(f"⚠️ NOTIFICATION_CHANNEL_ID не настроен — уведомление пропущено")
+        return
+    
     try:
-        # Получаем список админов
-        async with session.get(f"{API_URL}?action=getAdmins") as resp:
-            admins = await resp.json()
-        
-        if not admins or not isinstance(admins, list):
-            print(f"⚠️ Не удалось получить список админов")
-            return
-        
         # Формируем ссылку на пользователя
         if username:
             user_link = f"@{username}"
@@ -143,7 +142,7 @@ async def notify_new_user(user_id: int, username: str, first_name: str, last_nam
         # Формируем имя
         full_name = f"{first_name or ''} {last_name or ''}".strip() or '—'
         
-        # Сообщение для админов
+        # Сообщение
         text = (
             f"👤 <b>Новый пользователь!</b>\n\n"
             f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
@@ -152,34 +151,18 @@ async def notify_new_user(user_id: int, username: str, first_name: str, last_nam
             f"🔗 <a href='{profile_link}'>Открыть профиль</a>"
         )
         
-        # Отправляем всем активным админам
-        sent_count = 0
-        for admin in admins:
-            admin_id = admin.get('telegram_id')
-            is_active = admin.get('is_active', True)
-            
-            # Пропускаем неактивных и самого пользователя
-            if not is_active or str(admin_id) == str(user_id):
-                continue
-            
-            try:
-                await bot.send_message(
-                    chat_id=admin_id,
-                    text=text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True
-                )
-                sent_count += 1
-            except Exception as e:
-                print(f"❌ Не удалось отправить админу {admin_id}: {e}")
+        # Отправляем в канал
+        await bot.send_message(
+            chat_id=NOTIFICATION_CHANNEL_ID,
+            text=text,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
         
-        if sent_count > 0:
-            print(f"✅ Уведомление отправлено {sent_count} админам о пользователе {user_id}")
-        else:
-            print(f"⚠️ Уведомление не отправлено (нет активных админов)")
-            
+        print(f"✅ Уведомление отправлено в канал о пользователе {user_id}")
+        
     except Exception as e:
-        print(f" Ошибка уведомления о новом пользователе: {e}")
+        print(f"❌ Ошибка отправки уведомления в канал: {e}")
         
 async def main():
     global session
