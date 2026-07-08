@@ -30,21 +30,33 @@ async def api_get(action, params=None):
 async def cmd_start(message: Message):
     user = message.from_user
     username = user.username or ''
+    user_id = user.id
     
     # Регистрируем/обновляем пользователя
     try:
         async with session.post(API_URL, json={
             'action': 'upsertUser',
-            'telegram_id': user.id,
+            'telegram_id': user_id,
             'username': username,
             'first_name': user.first_name or '',
-            'last_name': user.last_name or '',
-            'blocked': 'TRUE'
+            'last_name': user.last_name or ''
         }) as resp:
             result = await resp.json()
-            print(f"👤 Пользователь {user.id} (@{username}): {result.get('action')}")
+            is_new_user = result.get('action') == 'created'
+            print(f"👤 Пользователь {user_id} (@{username}): {result.get('action')}")
     except Exception as e:
-        print(f" Ошибка upsertUser: {e}")
+        print(f"❌ Ошибка upsertUser: {e}")
+        is_new_user = False
+    
+    # Если пользователь новый — уведомляем админов
+    if is_new_user:
+        await notify_new_user(
+            user_id=user_id,
+            username=username,
+            first_name=user.first_name or '',
+            last_name=user.last_name or '',
+            session=session
+        )
     
     # Если есть username — обновляем telegram_id в существующей записи
     if username:
@@ -52,11 +64,11 @@ async def cmd_start(message: Message):
             async with session.post(API_URL, json={
                 'action': 'updateTelegramIdByUsername',
                 'username': username,
-                'telegram_id': user.id
+                'telegram_id': user_id
             }) as resp:
                 result = await resp.json()
                 if result.get('action') == 'updated':
-                    print(f"✅ Обновлён telegram_id для @{username}: {user.id}")
+                    print(f"✅ Обновлён telegram_id для @{username}: {user_id}")
         except Exception as e:
             print(f" Ошибка updateTelegramIdByUsername: {e}")
     
@@ -108,6 +120,67 @@ async def my_boxes(message: Message):
     
     await message.answer(text, parse_mode="HTML")
 
+# ===== УВЕДОМЛЕНИЕ О НОВОМ ПОЛЬЗОВАТЕЛЕ =====
+async def notify_new_user(user_id: int, username: str, first_name: str, last_name: str, session: aiohttp.ClientSession):
+    """Отправляет уведомление всем админам о новом пользователе"""
+    try:
+        # Получаем список админов
+        async with session.get(f"{API_URL}?action=getAdmins") as resp:
+            admins = await resp.json()
+        
+        if not admins or not isinstance(admins, list):
+            print(f"⚠️ Не удалось получить список админов")
+            return
+        
+        # Формируем ссылку на пользователя
+        if username:
+            user_link = f"@{username}"
+            profile_link = f"https://t.me/{username}"
+        else:
+            user_link = f"id:{user_id}"
+            profile_link = f"tg://user?id={user_id}"
+        
+        # Формируем имя
+        full_name = f"{first_name or ''} {last_name or ''}".strip() or '—'
+        
+        # Сообщение для админов
+        text = (
+            f"👤 <b>Новый пользователь!</b>\n\n"
+            f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            f"👤 <b>Username:</b> {user_link}\n"
+            f"📛 <b>Имя:</b> {full_name}\n\n"
+            f"🔗 <a href='{profile_link}'>Открыть профиль</a>"
+        )
+        
+        # Отправляем всем активным админам
+        sent_count = 0
+        for admin in admins:
+            admin_id = admin.get('telegram_id')
+            is_active = admin.get('is_active', True)
+            
+            # Пропускаем неактивных и самого пользователя
+            if not is_active or str(admin_id) == str(user_id):
+                continue
+            
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                sent_count += 1
+            except Exception as e:
+                print(f"❌ Не удалось отправить админу {admin_id}: {e}")
+        
+        if sent_count > 0:
+            print(f"✅ Уведомление отправлено {sent_count} админам о пользователе {user_id}")
+        else:
+            print(f"⚠️ Уведомление не отправлено (нет активных админов)")
+            
+    except Exception as e:
+        print(f" Ошибка уведомления о новом пользователе: {e}")
+        
 async def main():
     global session
     session = aiohttp.ClientSession()
